@@ -1,0 +1,28 @@
+assets/*
+
+vendor/
+
+*.exe
+*.out
+*.o
+
+/bin/
+/pkg/
+
+Thumbs.db
+Desktop.ini
+
+.vscode/
+
+*.log
+
+.env
+
+# Editor swap files
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.bak
+
