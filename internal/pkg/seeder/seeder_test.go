@@ -5,8 +5,8 @@ import (
 )
 
 func TestCreateSeeder(t *testing.T) {
-    returnValue := seeder(1)
+    returnValue := seeder(0)
     if returnValue != 0 {
-        t.Errorf("seeder(1) = %d; should be 0!", returnValue)
+        t.Errorf("seeder(0) = %d; should be 0!", returnValue)
     }
 }
