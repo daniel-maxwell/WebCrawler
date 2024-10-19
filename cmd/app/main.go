@@ -4,10 +4,10 @@ package main
 
 import (
     "fmt"
-    "webcrawler/internal/pkg/seeder"
+    "webcrawler/internal/pkg/administrator"
 )
 
 func main() {
-    fmt.Println("Main called")
-    seeder.CreateSeeder(0)
+    fmt.Println("Main Called")
+    administrator.Run()
 }
