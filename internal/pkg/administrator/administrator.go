@@ -1,5 +1,16 @@
 package administrator
 
+/*
+ The administrator package is responsible for managing the progress of the workers. 
+ Each worker reads a line from the file, processes the URL, and increments the line number.
+ The administrator package reads the progress from a file, updates the progress, and saves the progress to the file every 100 lines.
+
+ For each line, url proccer should collect 10 urls from the page. 
+ Then 5 urls from all of those pages, 
+ then 2 urls from all of those pages. 
+ Then 1 url from all of those pages.
+*/
+
 import (
     "fmt"
     "sync"
@@ -9,7 +20,7 @@ import (
     "io/ioutil"
     "strconv"
     "strings"
-    "time"
+    //"time"
 )
 
 var (
@@ -24,25 +35,6 @@ var (
 func Run() {
     fmt.Println("Administrator Called")
 
-    // Load progress from file - to make crawler crash resistant
-    lineNumber = loadProgress()
-
-    // Open file containing top 1m most visited URLs
-    file, err := os.Open("internal/pkg/administrator/data/top-1m.txt")
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer file.Close()
-
-    // Create a scanner to read the file line by line
-    scanner := bufio.NewScanner(file)
-
-    // Try to skip lines that have already been processed
-    if err := updateProgress(scanner); err != nil {
-        log.Printf("Failed to update progress, restarting from first line: %v", err)
-        lineNumber = 0
-    }
-
     urlChan := make(chan string, 100)
     var wg sync.WaitGroup
 
@@ -53,21 +45,49 @@ func Run() {
             defer wg.Done()
             for url := range urlChan {
                 fmt.Println("Processing: ", url)
-                time.Sleep(1000 * time.Millisecond)
+                // Process URL
                 incrementLineNumber()
             }
         }()
     }
 
-    // Read URLs and send to channel
-    for scanner.Scan() {
-        url := scanner.Text()
-        urlChan <- url
-    }
-    close(urlChan) // Close channel when done
-    wg.Wait()      // Wait for all workers to finish
-}
+    // Continuous loop to restart from the top of the file
+    for {
+        // Load progress from file
+        lineNumber = loadProgress()
 
+        // Open file containing top 1m most visited URLs
+        file, err := os.Open("internal/pkg/administrator/data/top-1m.txt")
+        if err != nil {
+            log.Fatal(err)
+        }
+
+        scanner := bufio.NewScanner(file)
+
+        // Try to skip lines that have already been processed
+        if err := updateProgress(scanner); err != nil {
+            // Restart from the first line if unable to update progress
+            lineNumber = 0
+        }
+
+        // Read URLs and send to channel
+        for scanner.Scan() {
+            url := scanner.Text()
+            urlChan <- url
+        }
+
+        file.Close() // Close the file before restarting the loop
+
+        // Reset the lineNumber to start from the beginning
+        lineNumber = 0
+        saveProgress()
+    }
+
+    // Note: In this continuous loop setup, you might not reach this point.
+    // If you have a termination condition, you should handle closing the channel and waiting for workers.
+    // close(urlChan)
+    // wg.Wait()
+}
 
 // Loads progress from progress file
 func loadProgress() int {
