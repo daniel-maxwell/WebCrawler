@@ -9,5 +9,7 @@ import (
 
 func main() {
     fmt.Println("Main Called")
-    administrator.Run()
+    administrator := administrator.NewAdministrator("internal/pkg/administrator/data/progress.txt")
+    administrator.Run() // Careful! This will run indefinitely.
+    administrator.Shutdown()
 }
