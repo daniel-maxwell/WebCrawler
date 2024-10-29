@@ -47,8 +47,9 @@ func (a *Administrator) Run() {
 				case <-a.ctx.Done():
 					return
 				default:
-					fmt.Println("Processing:", url)
 					// Process URL
+					processURL(url) // dummy method for now
+
 					a.incrementLineNumber()
 				}
 			}
@@ -158,4 +159,9 @@ func (a *Administrator) updateProgress(scanner *bufio.Scanner) error {
 		currentLine++
 	}
 	return nil
+}
+
+// Dummy method to simulate processing a URL
+func processURL(url string) string {
+	return url
 }

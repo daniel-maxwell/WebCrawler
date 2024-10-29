@@ -2,18 +2,24 @@ package queue
 
 import ( 
     "errors"
-    "fmt"
 ) 
 
 type Queue struct { 
-    Elements []int 
-    Size     int 
+    Elements []string
+    Size     int
 } 
 
-// Creates a new queue
+// Creates a new queue with the specified size
+func NewQueue(size int) *Queue {
+    if size <= 0 {
+        return nil
+    }
+    return &Queue{Size: size}
+}
+
+// Adds an element to the end of the queue
 func (q *Queue) Enqueue(elem string) { 
     if q.GetLength() == q.Size { 
-        fmt.Println("Overflow") 
         return
     } 
     q.Elements = append(q.Elements, elem) 
@@ -22,7 +28,6 @@ func (q *Queue) Enqueue(elem string) {
 // Removes the first element of the queue
 func (q *Queue) Dequeue() string { 
     if q.IsEmpty() { 
-        fmt.Println("UnderFlow") 
         return ""
     } 
     element := q.Elements[0] 
@@ -35,7 +40,7 @@ func (q *Queue) Dequeue() string {
 } 
 
 // Returns the length of the queue
-func (q *Queue) GetLength() string { 
+func (q *Queue) GetLength() int { 
     return len(q.Elements) 
 } 
 
@@ -45,7 +50,7 @@ func (q *Queue) IsEmpty() bool {
 } 
 
 // Returns the first element of the queue
-func (q *Queue) Peek() (int, error) { 
+func (q *Queue) Peek() (string, error) { 
     if q.IsEmpty() { 
         return "", errors.New("empty queue") 
     } 
