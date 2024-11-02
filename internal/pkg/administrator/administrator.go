@@ -4,15 +4,16 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"webcrawler/internal/pkg/fetcher"
 )
 
 const numWorkers = 10
+var processedSingleUrl = false
 
 type Administrator struct {
 	ctx           context.Context
@@ -107,6 +108,7 @@ func (a *Administrator) Run() {
 	}
 }
 
+// ShutDown cancels the context and waits for all workers to finish
 func (a *Administrator) ShutDown() {
 	a.cancel()
 	a.wg.Wait()
@@ -114,7 +116,7 @@ func (a *Administrator) ShutDown() {
 
 // Methods for progress handling
 func (a *Administrator) loadProgress() int {
-	data, err := ioutil.ReadFile(a.progressFile)
+	data, err := os.ReadFile(a.progressFile)
 	if err != nil {
 		return 0
 	}
@@ -129,7 +131,7 @@ func (a *Administrator) saveProgress() {
 	a.progressMutex.Lock()
 	defer a.progressMutex.Unlock()
 	data := []byte(fmt.Sprintf("%d\n", a.lineNumber))
-	err := ioutil.WriteFile(a.progressFile, data, 0644)
+	err := os.WriteFile(a.progressFile, data, 0644)
 	if err != nil {
 		log.Printf("Error saving progress: %v", err)
 	}
@@ -162,6 +164,13 @@ func (a *Administrator) updateProgress(scanner *bufio.Scanner) error {
 }
 
 // Dummy method to simulate processing a URL
+// This will eventually just push the URL to the back of the queue
 func processURL(url string) string {
-	return url
+	fmt.Println("Navigating to URL:", url)
+	response := ""
+	if (!processedSingleUrl) {
+		response = fetcher.Fetch(url)
+		processedSingleUrl = true
+	}
+	return response
 }
