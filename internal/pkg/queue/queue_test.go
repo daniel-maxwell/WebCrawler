@@ -4,155 +4,235 @@ import (
 	"testing"
 )
 
-func TestNewQueue(t *testing.T) {
-	q := NewQueue(3)
-	if q.Size != 3 {
-		t.Errorf("Expected queue size to be 3, got %d", q.Size)
+func TestCreateQueue(t *testing.T) {
+	q, err := CreateQueue(3)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
 	}
-	q = NewQueue(1000000)
-	if q.Size != 1000000 {
-		t.Errorf("Expected queue size to be 1000000, got %d", q.Size)
+	if q.capacity != 3 {
+		t.Errorf("Expected queue size to be 3, got %d", q.capacity)
 	}
-	if len(q.Elements) != 0 {
-		t.Errorf("Expected queue elements to be empty, got %v", q.Elements)
+
+	q, err = CreateQueue(1000000)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
 	}
-	q = NewQueue(0)
+	if q.capacity != 1000000 {
+		t.Errorf("Expected queue size to be 1000000, got %d", q.capacity)
+	}
+
+	q, err = CreateQueue(0)
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
 	if q != nil {
 		t.Errorf("Expected queue to be nil, got %v", q)
 	}
-	q = NewQueue(-1)
+
+	q, err = CreateQueue(-1)
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
 	if q != nil {
 		t.Errorf("Expected queue to be nil, got %v", q)
 	}
 }
 
-func TestEnqueue(t *testing.T) {
-	q := NewQueue(3)
-	q.Enqueue("a")
-	if q.GetLength() != 1 {
-		t.Errorf("Expected queue length to be 1, got %d", q.GetLength())
+func TestInsert(t *testing.T) {
+	q, err := CreateQueue(3)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
 	}
-	q.Enqueue("b")
-	if q.GetLength() != 2 {
-		t.Errorf("Expected queue length to be 2, got %d", q.GetLength())
+	if q.Length() != 0 {
+		t.Errorf("Expected queue length to be 0, got %d", q.Length())
 	}
-	q.Enqueue("c")
-	if q.GetLength() != 3 {
-		t.Errorf("Expected queue length to be 3, got %d", q.GetLength())
+
+	err = q.Insert("a")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
 	}
-	q.Enqueue("d")
-	if q.GetLength() != 3 {
-		t.Errorf("Queue should be full, expected queue length to be 3, got %d", q.GetLength())
+	if q.Length() != 1 {
+		t.Errorf("Expected queue length to be 1, got %d", q.Length())
+	}
+
+	err = q.Insert("b")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if q.Length() != 2 {
+		t.Errorf("Expected queue length to be 2, got %d", q.Length())
+	}
+
+	err = q.Insert("c")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if q.Length() != 3 {
+		t.Errorf("Expected queue length to be 3, got %d", q.Length())
+	}
+
+	err = q.Insert("d")
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
+	if q.Length() != 3 {
+		t.Errorf("Queue should be full, expected queue length to be 3, got %d", q.Length())
 	}
 }
 
-func TestDequeue(t *testing.T) {
-	q := NewQueue(3)
-	q.Enqueue("a")
-	q.Enqueue("b")
-	q.Enqueue("c")
+func TestRemove(t *testing.T) {
+	q, err := CreateQueue(3)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
 
-	elem := q.Dequeue()
+	q.Insert("a")
+	q.Insert("b")
+	q.Insert("c")
+
+	elem, err := q.Remove()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
 	if elem != "a" {
-		t.Errorf("Expected dequeued element to be 'a', got '%s'", elem)
+		t.Errorf("Expected Removed element to be 'a', got '%s'", elem)
 	}
-	if q.GetLength() != 2 {
-		t.Errorf("Expected queue length to be 2, got %d", q.GetLength())
+	if q.Length() != 2 {
+		t.Errorf("Expected queue length to be 2, got %d", q.Length())
 	}
-	elem = q.Dequeue()
+
+	elem, err = q.Remove()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
 	if elem != "b" {
-		t.Errorf("Expected dequeued element to be 'b', got '%s'", elem)
+		t.Errorf("Expected Removed element to be 'b', got '%s'", elem)
 	}
-	if q.GetLength() != 1 {
-		t.Errorf("Expected queue length to be 1, got %d", q.GetLength())
+	if q.Length() != 1 {
+		t.Errorf("Expected queue length to be 1, got %d", q.Length())
 	}
-	elem = q.Dequeue()
+
+	elem, err = q.Remove()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
 	if elem != "c" {
-		t.Errorf("Expected dequeued element to be 'c', got '%s'", elem)
+		t.Errorf("Expected Removed element to be 'c', got '%s'", elem)
 	}
-	if q.GetLength() != 0 {
-		t.Errorf("Expected queue length to be 0, got %d", q.GetLength())
+	if q.Length() != 0 {
+		t.Errorf("Expected queue length to be 0, got %d", q.Length())
 	}
-	elem = q.Dequeue()
+
+	elem, err = q.Remove()
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
 	if elem != "" {
-		t.Errorf("Queue should be empty and return empty string. Expected dequeued element to be '', got '%s'", elem)
+		t.Errorf("Queue should be empty and return empty string. Expected Removed element to be '', got '%s'", elem)
+	}
+	if q.Length() != 0 {
+		t.Errorf("Expected queue length to be 0, got %d", q.Length())
 	}
 }
 
-func TestGetLength(t *testing.T) {
-	q := NewQueue(3)
-	if q.GetLength() != 0 {
-		t.Errorf("Expected queue length to be 0, got %d", q.GetLength())
+func TestLength(t *testing.T) {
+	q, err := CreateQueue(3)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
 	}
-	q.Enqueue("a")
-	if q.GetLength() != 1 {
-		t.Errorf("Expected queue length to be 1, got %d", q.GetLength())
+	if q.Length() != 0 {
+		t.Errorf("Expected queue length to be 0, got %d", q.Length())
 	}
-	q.Enqueue("b")
-	if q.GetLength() != 2 {
-		t.Errorf("Expected queue length to be 2, got %d", q.GetLength())
+
+	err = q.Insert("a")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
 	}
-	q.Enqueue("c")
-	if q.GetLength() != 3 {
-		t.Errorf("Expected queue length to be 3, got %d", q.GetLength())
+	if q.Length() != 1 {
+		t.Errorf("Expected queue length to be 1, got %d", q.Length())
 	}
-	q.Enqueue("d")
-	if q.GetLength() != 3 {
-		t.Errorf("Queue should be full, expected queue length to be 3, got %d", q.GetLength())
+
+	err = q.Insert("b")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
 	}
-	q.Dequeue()
-	if q.GetLength() != 2 {
-		t.Errorf("Expected queue length to be 2, got %d", q.GetLength())
+	if q.Length() != 2 {
+		t.Errorf("Expected queue length to be 2, got %d", q.Length())
 	}
-	q.Dequeue()
-	if q.GetLength() != 1 {
-		t.Errorf("Expected queue length to be 1, got %d", q.GetLength())
+
+	err = q.Insert("c")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
 	}
-	q.Dequeue()
-	if q.GetLength() != 0 {
-		t.Errorf("Expected queue length to be 0, got %d", q.GetLength())
+	if q.Length() != 3 {
+		t.Errorf("Expected queue length to be 3, got %d", q.Length())
+	}
+
+	err = q.Insert("d")
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
+	if q.Length() != 3 {
+		t.Errorf("Queue should be full, expected queue length to be 3, got %d", q.Length())
+	}
+
+	value, err := q.Remove()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if value != "a" {
+		t.Errorf("Expected Removed element to be 'a', got '%s'", value)
+	}
+	if q.Length() != 2 {
+		t.Errorf("Expected queue length to be 2, got %d", q.Length())
+	}
+
+
+	value, err = q.Remove()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if value != "b" {
+		t.Errorf("Expected Removed element to be 'b', got '%s'", value)
+	}
+	if q.Length() != 1 {
+		t.Errorf("Expected queue length to be 1, got %d", q.Length())
+	}
+
+	value, err = q.Remove()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if value != "c" {
+		t.Errorf("Expected Removed element to be 'c', got '%s'", value)
+	}
+	if q.Length() != 0 {
+		t.Errorf("Expected queue length to be 0, got %d", q.Length())
+	}
+
+	value, err = q.Remove()
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
+	if value != "" {
+		t.Errorf("Queue should be empty and return empty string. Expected Removed element to be '', got '%s'", value)
 	}
 }
 
 func TestIsEmpty(t *testing.T) {
-	q := NewQueue(3)
+	q, err := CreateQueue(3)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
 	if !q.IsEmpty() {
 		t.Errorf("Expected queue to be empty")
 	}
-	q.Enqueue("a")
+	q.Insert("a")
 	if q.IsEmpty() {
 		t.Errorf("Expected queue to not be empty")
 	}
-	q.Dequeue()
+	q.Remove()
 	if !q.IsEmpty() {
 		t.Errorf("Expected queue to be empty again")
-	}
-}
-
-func TestPeek(t *testing.T) {
-	q := NewQueue(3)
-	elem, err := q.Peek()
-	if elem != "" || err == nil {
-		t.Errorf("Expected empty queue to return empty string and error")
-	}
-	q.Enqueue("a")
-	elem, err = q.Peek()
-	if elem != "a" || err != nil {
-		t.Errorf("Expected queue with one element to return 'a' and no error")
-	}
-	q.Enqueue("b")
-	elem, err = q.Peek()
-	if elem != "a" || err != nil {
-		t.Errorf("Expected queue with two elements to return 'a' and no error")
-	}
-	q.Dequeue()
-	elem, err = q.Peek()
-	if elem != "b" || err != nil {
-		t.Errorf("Expected queue with one element to return 'b' and no error")
-	}
-	q.Dequeue()
-	elem, err = q.Peek()
-	if elem != "" || err == nil {
-		t.Errorf("Expected empty queue to return empty string and error")
 	}
 }

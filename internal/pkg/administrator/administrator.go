@@ -5,11 +5,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	//"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"webcrawler/internal/pkg/fetcher"
+	//"webcrawler/internal/pkg/queue"
 )
 
 const numWorkers = 10

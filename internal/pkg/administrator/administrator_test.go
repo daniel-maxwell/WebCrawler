@@ -1,7 +1,6 @@
 package administrator
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,7 +12,7 @@ import (
 
 func TestAdministratorRun(t *testing.T) {
 	// Set up temporary directories and files for testing
-	tempDir, err := ioutil.TempDir("", "administrator_test")
+	tempDir, err := os.MkdirTemp("", "administrator_test")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -34,7 +33,7 @@ func TestAdministratorRun(t *testing.T) {
 	}
 
 	// Write URLs to the data file
-	if err := ioutil.WriteFile(dataFile, []byte(strings.Join(urls, "\n")), 0644); err != nil {
+	if err := os.WriteFile(dataFile, []byte(strings.Join(urls, "\n")), 0644); err != nil {
 		t.Fatalf("Failed to write data file: %v", err)
 	}
 
@@ -46,11 +45,11 @@ func TestAdministratorRun(t *testing.T) {
 	defer os.RemoveAll("internal")
 
 	// Copy the temporary data file to the expected location
-	inputData, err := ioutil.ReadFile(dataFile)
+	inputData, err := os.ReadFile(dataFile)
 	if err != nil {
 		t.Fatalf("Failed to read temporary data file: %v", err)
 	}
-	if err := ioutil.WriteFile(originalDataFilePath, inputData, 0644); err != nil {
+	if err := os.WriteFile(originalDataFilePath, inputData, 0644); err != nil {
 		t.Fatalf("Failed to write to original data file path: %v", err)
 	}
 
@@ -72,7 +71,7 @@ func TestAdministratorRun(t *testing.T) {
 	wg.Wait()
 
 	// Verify that the progress file has been updated correctly
-	progressData, err := ioutil.ReadFile(progressFile)
+	progressData, err := os.ReadFile(progressFile)
 	if err != nil {
 		t.Fatalf("Failed to read progress file: %v", err)
 	}
@@ -92,7 +91,7 @@ func TestAdministratorRun(t *testing.T) {
 
 func TestLoadAndSaveProgress(t *testing.T) {
 	// Create a temporary progress file
-	tempFile, err := ioutil.TempFile("", "progress.txt")
+	tempFile, err := os.CreateTemp("", "progress.txt")
 	if err != nil {
 		t.Fatalf("Failed to create temporary progress file: %v", err)
 	}
@@ -113,7 +112,7 @@ func TestLoadAndSaveProgress(t *testing.T) {
 }
 
 func TestIncrementLineNumber(t *testing.T) {
-	tempFile, err := ioutil.TempFile("", "progress.txt")
+	tempFile, err := os.CreateTemp("", "progress.txt")
 	if err != nil {
 		t.Fatalf("Failed to create temporary progress file: %v", err)
 	}

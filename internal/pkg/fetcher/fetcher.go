@@ -49,8 +49,9 @@ func Fetch(shortUrl string) string {
         chromedp.Text("body", &content, chromedp.ByQuery), // Controls what to extract from the page
     )
     if err != nil {
-        // Currently a fatal error for debugging, but will be handled gracefully
-        log.Fatalf("Failed to fetch HTML content from URL: %v | err: %v ", url, err)
+        // Togglable fatal error for debugging, this will be refactored later
+        log.Printf("Failed to fetch HTML content from URL: %v | err: %v ", url, err)
+        // log.Fatalf("Failed to fetch HTML content from URL: %v | err: %v ", url, err)
     }
 
     return content
