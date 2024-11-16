@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"webcrawler/internal/pkg/fetcher"
+	//"webcrawler/internal/pkg/fetcher"
 	//"webcrawler/internal/pkg/queue"
 )
 
@@ -171,7 +171,7 @@ func processURL(url string) string {
 	fmt.Println("Navigating to URL:", url)
 	response := ""
 	if (!processedSingleUrl) {
-		response = fetcher.Fetch(url)
+		//response = fetcher.Fetch(url)
 		processedSingleUrl = true
 	}
 	return response
