@@ -14,7 +14,7 @@ import (
     "time"
     "github.com/chromedp/chromedp"
     "golang.org/x/net/html"
-	"golang.org/x/net/html/atom"
+    "golang.org/x/net/html/atom"
 )
 
 const userAgent = "SearchEngineCrawler/1.0"
@@ -35,57 +35,69 @@ var (
     }
 )
 
-// Orchestrates the fetching process.
-// First tries using the HTTP client and falls back to chromedp if necessary.
-func Fetch(shortUrl string) (string, error) {
+// Fetch orchestrates the fetching process.
+// It tries using the HTTP client and falls back to chromedp if necessary.
+func Fetch(shortUrl string) (PageData, error) {
     fullURL, err := buildFullUrl(shortUrl)
     if err != nil {
-        return "", fmt.Errorf("failed to build full URL from short URL %v: %v", shortUrl, err)
+        return PageData{}, fmt.Errorf("failed to build full URL from short URL %v: %v", shortUrl, err)
     }
+
+    // Initialize PageData
+    var pageData PageData
+    pageData.URL = fullURL
+    pageData.IsSecure = strings.HasPrefix(fullURL, "https://")
 
     // Wait for permission from the rate limiter
     err = waitForPermission(fullURL)
     if err != nil {
         if errors.Is(err, ErrCrawlingDisallowed) {
             log.Printf("Crawling disallowed for URL: %s", fullURL)
-            return "", err
+            return PageData{}, err
         }
-        return "", fmt.Errorf("error in rate limiter for URL %s: %v", fullURL, err)
+        return PageData{}, fmt.Errorf("error in rate limiter for URL %s: %v", fullURL, err)
     }
 
     // Attempt to fetch content using HTTP client
+    startTime := time.Now()
     content, err := fetchContent(fullURL)
+    pageData.LoadTime = time.Since(startTime)
     if err != nil {
         log.Printf("HTTP fetch failed for URL %s: %v", fullURL, err)
-        return "", err
+        return PageData{}, err
     }
 
-    // Check if content is sufficient
-    if IsContentSufficient(content) {
-        // Extract meaningful text for indexing
-        textContent := ExtractVisibleTextFromString(content)
-        return textContent, nil
+    // Extract data from content
+    pd, err := ExtractPageData(content, fullURL)
+    if err != nil {
+        return PageData{}, fmt.Errorf("failed to extract page data from URL %s: %v", fullURL, err)
+    }
+    pageData = pd
+
+    // Check if data is sufficient
+    if IsDataSufficient(pageData) {
+        pageData.LastCrawled = time.Now()
+        return pageData, nil
     }
 
     // Content is insufficient; fallback to rendering with chromedp
-    log.Printf("Content insufficient for URL %s, falling back to chromedp", fullURL)
+    log.Printf("Data insufficient for URL %s, falling back to chromedp", fullURL)
+    startTime = time.Now()
     renderedContent, err := fetchRenderedContent(fullURL)
+    pageData.LoadTime = time.Since(startTime)
     if err != nil {
-        return "", fmt.Errorf("failed to fetch rendered content from URL %s: %v", fullURL, err)
+        return PageData{}, fmt.Errorf("failed to fetch rendered content from URL %s: %v", fullURL, err)
     }
 
-    // Extract meaningful text from rendered content
-    textContent := ExtractVisibleTextFromString(renderedContent)
-    return textContent, nil
-}
-
-// Helper function to extract text from a string of HTML content
-func ExtractVisibleTextFromString(content string) string {
-    doc, err := html.Parse(strings.NewReader(content))
+    // Extract data from rendered content
+    pd, err = ExtractPageData(renderedContent, fullURL)
     if err != nil {
-        return ""
+        return PageData{}, fmt.Errorf("failed to extract page data from rendered content of URL %s: %v", fullURL, err)
     }
-    return ExtractVisibleText(doc)
+    pageData = pd
+    pageData.LastCrawled = time.Now()
+
+    return pageData, nil
 }
 
 // FetchContent fetches the page content using the HTTP client.
@@ -115,29 +127,55 @@ func fetchContent(fullURL string) (string, error) {
     return content, nil
 }
 
-// IsContentSufficient checks if the fetched content is sufficient.
-// This can be customized based on specific criteria.
-func IsContentSufficient(content string) bool {
-    // Parse the HTML content
-    doc, err := html.Parse(strings.NewReader(content))
-    if err != nil {
-        return false
-    }
-
-    // Extract visible text
-    visibleText := ExtractVisibleText(doc)
-
-    // Define a threshold for minimum content length
+// IsDataSufficient checks if the extracted PageData is sufficient.
+func IsDataSufficient(pd PageData) bool {
     minContentLength := 200 // Adjust this value as needed
 
-    // Check if the visible text meets the threshold
-    if len(visibleText) >= minContentLength {
+    if len(pd.VisibleText) >= minContentLength && pd.Title != "" {
         return true
     }
-
     return false
 }
 
+// ExtractPageData extracts data from HTML content and populates PageData.
+func ExtractPageData(content, baseURL string) (PageData, error) {
+    var pd PageData
+    pd.URL = baseURL
+
+    doc, err := html.Parse(strings.NewReader(content))
+    if err != nil {
+        return pd, err
+    }
+
+    // Extract various data
+    pd.Title = extractTitle(doc)
+    pd.MetaDescription, pd.MetaKeywords, pd.RobotsMeta, pd.Charset = extractMetaTags(doc)
+    pd.CanonicalURL = extractCanonicalURL(doc)
+    pd.Headings = extractHeadings(doc)
+    pd.AltTexts = extractAltTexts(doc)
+    pd.AnchorTexts, pd.InternalLinks, pd.ExternalLinks = extractAnchorTextsAndLinks(doc, baseURL)
+    pd.OpenGraph = extractOpenGraphData(doc)
+    pd.Author = extractAuthor(doc)
+    pd.DatePublished, pd.DateModified = extractDates(doc)
+    pd.StructuredData = extractStructuredData(doc)
+    pd.VisibleText = ExtractVisibleText(doc)
+    pd.IsSecure = strings.HasPrefix(baseURL, "https://")
+    pd.Language = extractLanguage(doc)
+    pd.SocialLinks = extractSocialLinks(pd.ExternalLinks)
+
+    return pd, nil
+}
+
+// ExtractVisibleTextFromString extracts visible text from a string of HTML content
+func ExtractVisibleTextFromString(content string) string {
+    doc, err := html.Parse(strings.NewReader(content))
+    if err != nil {
+        return ""
+    }
+    return ExtractVisibleText(doc)
+}
+
+// ExtractVisibleText extracts visible text from an HTML node.
 func ExtractVisibleText(n *html.Node) string {
     var buf bytes.Buffer
     var f func(*html.Node)
@@ -170,24 +208,8 @@ func isNonVisibleParent(n *html.Node) bool {
     return false
 }
 
-// NodeTextContent extracts the text content from an HTML node.
-func nodeTextContent(n *html.Node) string {
-    var buf bytes.Buffer
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.TextNode {
-            buf.WriteString(n.Data)
-        }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
-        }
-    }
-    f(n)
-    return buf.String()
-}
-
 // FetchRenderedContent fetches the page content by rendering it using chromedp.
-func fetchRenderedContent(fullURL string) (string, error) {
+var fetchRenderedContent = func(fullURL string) (string, error) {
     // Initialize Chrome instance (only once per process)
     chromeOnce.Do(initChrome)
 
