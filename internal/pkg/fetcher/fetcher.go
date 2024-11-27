@@ -100,7 +100,7 @@ func Fetch(shortUrl string) (PageData, error) {
     return pageData, nil
 }
 
-// FetchContent fetches the page content using the HTTP client.
+// Fetches the page content using the HTTP client.
 func fetchContent(fullURL string) (string, error) {
     req, err := http.NewRequest("GET", fullURL, nil)
     if err != nil {
@@ -127,17 +127,16 @@ func fetchContent(fullURL string) (string, error) {
     return content, nil
 }
 
-// IsDataSufficient checks if the extracted PageData is sufficient.
+// Checks if the extracted PageData is sufficient.
 func IsDataSufficient(pd PageData) bool {
-    minContentLength := 200 // Adjust this value as needed
-
+    minContentLength := 50
     if len(pd.VisibleText) >= minContentLength && pd.Title != "" {
         return true
     }
     return false
 }
 
-// ExtractPageData extracts data from HTML content and populates PageData.
+// Extracts data from HTML content and populates PageData.
 func ExtractPageData(content, baseURL string) (PageData, error) {
     var pd PageData
     pd.URL = baseURL
@@ -166,7 +165,7 @@ func ExtractPageData(content, baseURL string) (PageData, error) {
     return pd, nil
 }
 
-// ExtractVisibleTextFromString extracts visible text from a string of HTML content
+// Extracts visible text from a string of HTML content
 func ExtractVisibleTextFromString(content string) string {
     doc, err := html.Parse(strings.NewReader(content))
     if err != nil {
@@ -175,7 +174,7 @@ func ExtractVisibleTextFromString(content string) string {
     return ExtractVisibleText(doc)
 }
 
-// ExtractVisibleText extracts visible text from an HTML node.
+// Extracts visible text from an HTML node.
 func ExtractVisibleText(n *html.Node) string {
     var buf bytes.Buffer
     var f func(*html.Node)
@@ -194,7 +193,7 @@ func ExtractVisibleText(n *html.Node) string {
     return buf.String()
 }
 
-// isNonVisibleParent checks if a node or any of its ancestors are non-visible.
+// Checks if a node or any of its ancestors are non-visible.
 func isNonVisibleParent(n *html.Node) bool {
     for ; n != nil; n = n.Parent {
         if n.Type == html.ElementNode {
@@ -272,7 +271,7 @@ func initChrome() {
     }
 }
 
-// Shutdown gracefully closes the browser instance and releases resources.
+// Gracefully closes the browser instance and releases resources.
 func Shutdown() {
     if browserCancel != nil {
         browserCancel()
