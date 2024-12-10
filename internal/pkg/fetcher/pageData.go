@@ -4,6 +4,7 @@ import (
     "time"
 )
 
+// Data structure to store and organize relevant information from the page
 type PageData struct {
     URL             	string
     CanonicalURL    	string
@@ -32,4 +33,3 @@ type PageData struct {
     IsMobileFriendly 	bool
     LastCrawled     	time.Time
 }
-

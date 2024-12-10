@@ -26,7 +26,7 @@ var (
 
 // Does this take in to account the robotsMeta tag?
 
-// waitForPermission checks if crawling is permitted for the given URL
+// Checks if crawling is permitted for the given URL
 // and enforces the Crawl-delay specified in robots.txt.
 func waitForPermission(targetURL string) error {
     parsedURL, err := url.Parse(targetURL)
@@ -78,7 +78,7 @@ func waitForPermission(targetURL string) error {
     return nil
 }
 
-// fetchRobotsData fetches and parses the robots.txt file for the domain.
+// Fetches and parses the robots.txt file for the domain.
 // It updates the RobotsData with the parsed information.
 func fetchRobotsData(parsedURL *url.URL, rData *RobotsData) error {
     robotsURL := parsedURL.Scheme + "://" + parsedURL.Host + "/robots.txt"

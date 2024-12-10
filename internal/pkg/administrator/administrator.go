@@ -27,6 +27,7 @@ type Administrator struct {
 	progressMutex sync.Mutex
 }
 
+// Creates a new Administrator instance
 func NewAdministrator(progressFilePath string) *Administrator {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Administrator{
@@ -37,6 +38,7 @@ func NewAdministrator(progressFilePath string) *Administrator {
 	}
 }
 
+// Starts the administrator
 func (a *Administrator) Run() {
 	fmt.Println("Administrator Called")
 
@@ -110,13 +112,42 @@ func (a *Administrator) Run() {
 	}
 }
 
-// ShutDown cancels the context and waits for all workers to finish
-func (a *Administrator) ShutDown() {
-	a.cancel()
-	a.wg.Wait()
+// Dummy method to simulate processing a URL
+// This will eventually just push the URL to the back of the queue
+func processURL(url string) string {
+	fmt.Println("Navigating to URL:", url)
+	response := ""
+	if (!processedSingleUrl) {
+		//response = fetcher.Fetch(url)
+		processedSingleUrl = true
+	}
+	return response
 }
 
-// Methods for progress handling
+// Increments the line number and saves progress every 100 lines
+func (a *Administrator) incrementLineNumber() {
+	a.progressMutex.Lock()
+	a.lineNumber++
+	currentLineNumber := a.lineNumber
+	a.progressMutex.Unlock()
+
+	if (currentLineNumber % 100) == 0 {
+		a.saveProgress()
+	}
+}
+
+// Saves the progress to disk
+func (a *Administrator) saveProgress() {
+	a.progressMutex.Lock()
+	defer a.progressMutex.Unlock()
+	data := []byte(fmt.Sprintf("%d\n", a.lineNumber))
+	err := os.WriteFile(a.progressFile, data, 0644)
+	if err != nil {
+		log.Printf("Error saving progress: %v", err)
+	}
+}
+
+// Loads the progress from disk
 func (a *Administrator) loadProgress() int {
 	data, err := os.ReadFile(a.progressFile)
 	if err != nil {
@@ -129,27 +160,7 @@ func (a *Administrator) loadProgress() int {
 	return lineNum
 }
 
-func (a *Administrator) saveProgress() {
-	a.progressMutex.Lock()
-	defer a.progressMutex.Unlock()
-	data := []byte(fmt.Sprintf("%d\n", a.lineNumber))
-	err := os.WriteFile(a.progressFile, data, 0644)
-	if err != nil {
-		log.Printf("Error saving progress: %v", err)
-	}
-}
-
-func (a *Administrator) incrementLineNumber() {
-	a.progressMutex.Lock()
-	a.lineNumber++
-	currentLineNumber := a.lineNumber
-	a.progressMutex.Unlock()
-
-	if (currentLineNumber % 100) == 0 {
-		a.saveProgress()
-	}
-}
-
+// Skips lines in the file that have already been processed
 func (a *Administrator) updateProgress(scanner *bufio.Scanner) error {
 	currentLine := 0
 	for currentLine < a.lineNumber {
@@ -165,14 +176,8 @@ func (a *Administrator) updateProgress(scanner *bufio.Scanner) error {
 	return nil
 }
 
-// Dummy method to simulate processing a URL
-// This will eventually just push the URL to the back of the queue
-func processURL(url string) string {
-	fmt.Println("Navigating to URL:", url)
-	response := ""
-	if (!processedSingleUrl) {
-		//response = fetcher.Fetch(url)
-		processedSingleUrl = true
-	}
-	return response
+// Cancels the context and waits for all workers to finish
+func (a *Administrator) ShutDown() {
+	a.cancel()
+	a.wg.Wait()
 }

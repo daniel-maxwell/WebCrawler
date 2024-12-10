@@ -4,6 +4,7 @@ import (
 	"testing"
 )
 
+// Tests creating a queue with a given capacity.
 func TestCreateQueue(t *testing.T) {
 	q, err := CreateQueue(3)
 	if err != nil {
@@ -38,6 +39,7 @@ func TestCreateQueue(t *testing.T) {
 	}
 }
 
+// Tests inserting elements into the queue.
 func TestInsert(t *testing.T) {
 	q, err := CreateQueue(3)
 	if err != nil {
@@ -80,6 +82,7 @@ func TestInsert(t *testing.T) {
 	}
 }
 
+// Tests removing elements from the queue.
 func TestRemove(t *testing.T) {
 	q, err := CreateQueue(3)
 	if err != nil {
@@ -135,6 +138,7 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+// Tests getting the length of the queue.
 func TestLength(t *testing.T) {
 	q, err := CreateQueue(3)
 	if err != nil {
@@ -219,6 +223,7 @@ func TestLength(t *testing.T) {
 	}
 }
 
+// Tests checking if the queue is empty.
 func TestIsEmpty(t *testing.T) {
 	q, err := CreateQueue(3)
 	if err != nil {
