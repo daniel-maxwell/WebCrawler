@@ -1,12 +1,13 @@
 package fetcher
 
 import (
-    "errors"
-    "net/http"
-    "net/url"
-    "sync"
-    "time"
-    "github.com/temoto/robotstxt"
+	"errors"
+	"net/http"
+	"net/url"
+	"sync"
+	"time"
+	"github.com/EDDYCJY/fake-useragent"
+	"github.com/temoto/robotstxt"
 )
 
 type RobotsData struct {
@@ -87,7 +88,7 @@ func fetchRobotsData(parsedURL *url.URL, rData *RobotsData) error {
     if err != nil {
         return err
     }
-    req.Header.Set("User-Agent", userAgent)
+    req.Header.Set("User-Agent", browser.Random())
 
     resp, err := httpClient.Do(req)
     if err != nil {
@@ -108,7 +109,7 @@ func fetchRobotsData(parsedURL *url.URL, rData *RobotsData) error {
         return nil
     }
 
-    group := robots.FindGroup(userAgent)
+    group := robots.FindGroup(browser.Random())
     if group == nil {
         group = robots.FindGroup("*")
     }

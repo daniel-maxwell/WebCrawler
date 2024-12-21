@@ -30,6 +30,5 @@ type PageData struct {
     VisibleText     	string
     LoadTime        	time.Duration
     IsSecure        	bool
-    IsMobileFriendly 	bool
     LastCrawled     	time.Time
 }

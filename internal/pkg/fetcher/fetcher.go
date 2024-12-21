@@ -15,9 +15,8 @@ import (
     "github.com/chromedp/chromedp"
     "golang.org/x/net/html"
     "golang.org/x/net/html/atom"
+    "github.com/EDDYCJY/fake-useragent"
 )
-
-const userAgent = "SearchEngineCrawler/1.0"
 
 var (
     // Shared Chrome instance variables
@@ -106,7 +105,7 @@ func fetchContent(fullURL string) (string, error) {
     if err != nil {
         return "", fmt.Errorf("failed to create HTTP request: %v", err)
     }
-    req.Header.Set("User-Agent", userAgent)
+    req.Header.Set("User-Agent", browser.Random())
 
     resp, err := httpClient.Do(req)
     if err != nil {
@@ -255,7 +254,7 @@ func initChrome() {
         chromedp.Headless,
         chromedp.NoSandbox,
         chromedp.Flag("blink-settings", "imagesEnabled=false"),
-        chromedp.UserAgent(userAgent),
+        chromedp.UserAgent(browser.Random()),
     )
 
     // Create the Chrome ExecAllocator context
