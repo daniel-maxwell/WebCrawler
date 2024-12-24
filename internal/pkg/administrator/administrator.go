@@ -41,6 +41,8 @@ func NewAdministrator(progressFilePath string) *Administrator {
         panic(fmt.Sprintf("Failed to create queue: %v", err))
     }
 
+    fetcher.Init()
+
     return &Administrator{
         ctx:          ctx,
         cancel:       cancel,
@@ -159,7 +161,60 @@ func (a *Administrator) fetcherWorker(id int) {
                 continue
             }
             // For now, just print the fetched data
-            fmt.Printf("Worker %d: Fetched %s -> Title: %s\n", id, pageData.URL, pageData.Title)
+            fmt.Printf(`Worker %d: Fetched %s ->
+            Title: %s
+            URL: %s
+            CanonicalURL: %s
+            Charset: %s
+            MetaDescription: %s
+            MetaKeywords: %s
+            RobotsMeta: %s
+            Language: %s
+            Headings: %s
+            AltTexts: %s
+            AnchorTexts: %s
+            InternalLinks: %s
+            ExternalLinks: %s
+            StructuredData: %s
+            OpenGraph: %s
+            Author: %s
+            DatePublished: %s
+            DateModified: %s
+            Categories: %s
+            Tags: %s
+            SocialLinks: %s
+            VisibleText: %s
+            LoadTime: %s
+            IsSecure: %t
+            LastCrawled: %s`,
+            id,
+            pageData.URL,
+            pageData.Title,
+            pageData.URL, 
+            pageData.CanonicalURL, 
+            pageData.Charset, 
+            pageData.MetaDescription, 
+            pageData.MetaKeywords, 
+            pageData.RobotsMeta, 
+            pageData.Language, 
+            pageData.Headings, 
+            pageData.AltTexts, 
+            pageData.AnchorTexts, 
+            pageData.InternalLinks, 
+            pageData.ExternalLinks, 
+            pageData.StructuredData, 
+            pageData.OpenGraph, 
+            pageData.Author, 
+            pageData.DatePublished, 
+            pageData.DateModified, 
+            pageData.Categories, 
+            pageData.Tags, 
+            pageData.SocialLinks, 
+            pageData.VisibleText, 
+            pageData.LoadTime, 
+            pageData.IsSecure, 
+            pageData.LastCrawled,
+        )
         }
     }
 }

@@ -1,6 +1,7 @@
 package fetcher
 
 import (
+    "os"
     "bytes"
     "context"
     "errors"
@@ -12,11 +13,17 @@ import (
     "strings"
     "sync"
     "time"
+    "math/rand"
+    "encoding/json"
     "github.com/chromedp/chromedp"
     "golang.org/x/net/html"
     "golang.org/x/net/html/atom"
-    "github.com/EDDYCJY/fake-useragent"
 )
+
+type UAData struct {
+    UA  string  `json:"ua"`
+    Pct float64 `json:"pct"`
+}
 
 var (
     // Shared Chrome instance variables
@@ -24,6 +31,7 @@ var (
     browserCancel context.CancelFunc
     allocCancel   context.CancelFunc
     chromeOnce    sync.Once
+    uaData        []UAData
 
     // HTTP client with custom settings
     httpClient = &http.Client{
@@ -33,6 +41,18 @@ var (
         },
     }
 )
+
+func Init() {
+    // Load user agents
+    jsonFile, err := os.Open("internal/pkg/fetcher/data/userAgents.json")
+    if err != nil {
+        log.Fatalf("failed to read user agents file: %v", err)
+    }
+    defer jsonFile.Close()
+    if err := json.NewDecoder(jsonFile).Decode(&uaData); err != nil {
+        log.Fatalf("Error decoding JSON: %v", err)
+    }
+}
 
 // Fetch orchestrates the fetching process.
 // It tries using the HTTP client and falls back to chromedp if necessary.
@@ -105,7 +125,7 @@ func fetchContent(fullURL string) (string, error) {
     if err != nil {
         return "", fmt.Errorf("failed to create HTTP request: %v", err)
     }
-    req.Header.Set("User-Agent", browser.Random())
+    req.Header.Set("User-Agent", getRandomUserAgent())
 
     resp, err := httpClient.Do(req)
     if err != nil {
@@ -246,6 +266,13 @@ func buildFullUrl(shortUrl string) (string, error) {
     return parsedURL.String(), nil
 }
 
+func getRandomUserAgent() string {
+    if len(uaData) == 0 {
+        log.Fatalf("No user agents loaded")
+    }
+    return uaData[rand.Intn(len(uaData))].UA
+}
+
 // initChrome initializes the Chrome browser instance.
 func initChrome() {
     // Set up Chrome options
@@ -254,7 +281,7 @@ func initChrome() {
         chromedp.Headless,
         chromedp.NoSandbox,
         chromedp.Flag("blink-settings", "imagesEnabled=false"),
-        chromedp.UserAgent(browser.Random()),
+        chromedp.UserAgent(getRandomUserAgent()),
     )
 
     // Create the Chrome ExecAllocator context
