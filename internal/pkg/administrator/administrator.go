@@ -10,27 +10,29 @@ import (
     "strings"
     "sync"
     "time"
+    "encoding/json"
     "webcrawler/internal/pkg/fetcher"
     "webcrawler/internal/pkg/queue"
+    "webcrawler/internal/pkg/filter"
 )
 
+// TODO: Investigate the following constants to optimize for production
 const (
-    numReaderWorkers  = 5
-    numFetcherWorkers = 10
-    queueCapacity     = 500
+    numReaderWorkers  = 3
+    numFetcherWorkers = 30
+    queueCapacity     = 1000000
 )
 
 type Administrator struct {
-    ctx          context.Context
-    cancel       context.CancelFunc
-    wg           sync.WaitGroup
-    urlChan      chan string
-    lineNumber   int
-    progressFile string
-
-    progressMutex sync.Mutex
-
-    urlQueue *queue.Queue
+    ctx             context.Context
+    cancel          context.CancelFunc
+    wg              sync.WaitGroup
+    urlChan         chan string
+    lineNumber      int
+    progressFile    string
+    progressMutex   sync.Mutex
+    bloomFilter     *bloomfilter.BloomFilterManager
+    urlQueue        *queue.Queue
 }
 
 func NewAdministrator(progressFilePath string) *Administrator {
@@ -41,13 +43,20 @@ func NewAdministrator(progressFilePath string) *Administrator {
         panic(fmt.Sprintf("Failed to create queue: %v", err))
     }
 
-    fetcher.Init()
+    err = fetcher.Init(); if err != nil { panic(err) }
+
+    // Create a new bloom filter manager - capacity will need to be increased for prod
+    filter, err := bloomfilter.NewBloomFilterManager("internal/pkg/filter/data/bloomfilter.dat", 1000, 1000000, 0.1)
+    if err != nil {
+        panic(fmt.Sprintf("Failed to create bloom filter: %v", err))
+    }
 
     return &Administrator{
         ctx:          ctx,
         cancel:       cancel,
-        urlChan:      make(chan string, 100),
+        urlChan:      make(chan string, 100), // TODO: Investigate buffer size requirements
         progressFile: progressFilePath,
+        bloomFilter:  filter,
         urlQueue:     q,
     }
 }
@@ -67,7 +76,7 @@ func (a *Administrator) Run() {
         go a.fetcherWorker(i)
     }
 
-    // Continuous loop - intended behavior
+    // Continuous loop
     for {
         select {
         case <-a.ctx.Done():
@@ -120,8 +129,15 @@ func (a *Administrator) readerWorker(id int) {
             if !ok {
                 return // channel closed
             }
+            if a.bloomFilter.IsVisited(url) {
+                continue // URL already visited
+            }
+            retryTime := 3
             // Insert URL into the queue, retry if full
             for {
+                if (retryTime > 100) {
+                    log.Printf("Worker %d: failed to insert %s after 3 retries", id, url)
+                }
                 err := a.urlQueue.Insert(url)
                 if err == nil {
                     // Successfully inserted
@@ -129,7 +145,9 @@ func (a *Administrator) readerWorker(id int) {
                     break
                 } else {
                     // Queue full, wait a bit and retry
-                    time.Sleep(100 * time.Millisecond)
+                    log.Printf("Worker %d: failed to insert %s: %v", id, url, err)
+                    time.Sleep(time.Duration(retryTime) * time.Millisecond)
+                    retryTime *= retryTime // Exponential backoff
                     select {
                     case <-a.ctx.Done():
                         return
@@ -160,61 +178,69 @@ func (a *Administrator) fetcherWorker(id int) {
                 log.Printf("Worker %d: failed to fetch %s: %v", id, url, err)
                 continue
             }
+
+            a.bloomFilter.MarkVisited(url)
+
             // For now, just print the fetched data
-            fmt.Printf(`Worker %d: Fetched %s ->
-            Title: %s
-            URL: %s
-            CanonicalURL: %s
-            Charset: %s
-            MetaDescription: %s
-            MetaKeywords: %s
-            RobotsMeta: %s
-            Language: %s
-            Headings: %s
-            AltTexts: %s
-            AnchorTexts: %s
-            InternalLinks: %s
-            ExternalLinks: %s
-            StructuredData: %s
-            OpenGraph: %s
-            Author: %s
-            DatePublished: %s
-            DateModified: %s
-            Categories: %s
-            Tags: %s
-            SocialLinks: %s
-            VisibleText: %s
-            LoadTime: %s
-            IsSecure: %t
-            LastCrawled: %s`,
-            id,
-            pageData.URL,
-            pageData.Title,
-            pageData.URL, 
-            pageData.CanonicalURL, 
-            pageData.Charset, 
-            pageData.MetaDescription, 
-            pageData.MetaKeywords, 
-            pageData.RobotsMeta, 
-            pageData.Language, 
-            pageData.Headings, 
-            pageData.AltTexts, 
-            pageData.AnchorTexts, 
-            pageData.InternalLinks, 
-            pageData.ExternalLinks, 
-            pageData.StructuredData, 
-            pageData.OpenGraph, 
-            pageData.Author, 
-            pageData.DatePublished, 
-            pageData.DateModified, 
-            pageData.Categories, 
-            pageData.Tags, 
-            pageData.SocialLinks, 
-            pageData.VisibleText, 
-            pageData.LoadTime, 
-            pageData.IsSecure, 
-            pageData.LastCrawled,
-        )
+            pageDataJSONBytes, err := json.MarshalIndent(pageData, "", "  ")
+            if err != nil {
+                panic(err)
+            }
+            fmt.Println(string(pageDataJSONBytes))
+            
+
+            // This code tries to enqueue links found on the page in a way that 
+            // avoids too many links from the same domain being contiguous in the queue.
+            totalLinksEnqueued := 0
+            internalLinksIdx := 0
+            externalLinksIdx := 0
+            for totalLinksEnqueued < 10 {
+                if internalLinksIdx >= len(pageData.InternalLinks) && externalLinksIdx >= len(pageData.ExternalLinks) {
+                    break
+                }
+
+                for (internalLinksIdx < len(pageData.InternalLinks) && 
+                    a.bloomFilter.IsVisited(pageData.InternalLinks[internalLinksIdx])) {
+                        internalLinksIdx++
+                }
+                
+                if internalLinksIdx < len(pageData.InternalLinks) {
+                    retryTime := 3
+                    for retryTime <= 100 {
+                        err := a.urlQueue.Insert(pageData.InternalLinks[internalLinksIdx])
+                        if err == nil { // Success! Break out of the loop.
+                            break
+                        }
+                        // If we got here, err != nil, so log the failure and retry
+                        log.Printf("Worker %d: failed to insert %s: %v", id, pageData.InternalLinks[internalLinksIdx], err)
+                        time.Sleep(time.Duration(retryTime) * time.Millisecond)
+                        retryTime *= retryTime // Exponential backoff
+                    }
+                    totalLinksEnqueued++
+                    internalLinksIdx++
+                }
+
+                for (externalLinksIdx < len(pageData.ExternalLinks) && 
+                a.bloomFilter.IsVisited(pageData.ExternalLinks[externalLinksIdx])) {
+                    externalLinksIdx++
+                }
+
+                if externalLinksIdx < len(pageData.ExternalLinks) {
+                    retryTime := 3
+                    for retryTime <= 100 {
+                        err := a.urlQueue.Insert(pageData.ExternalLinks[externalLinksIdx])
+                        if err == nil { // Success! Break out of the loop.
+                            break
+                        }
+                        // If we got here, err != nil, so log the failure and retry
+                        log.Printf("Worker %d: failed to insert %s: %v", id, pageData.ExternalLinks[externalLinksIdx], err)
+                        time.Sleep(time.Duration(retryTime) * time.Millisecond)
+                        retryTime *= retryTime // Exponential backoff
+                    }
+                    totalLinksEnqueued++
+                    externalLinksIdx++
+                }
+            }
         }
     }
 }
@@ -224,7 +250,6 @@ func (a *Administrator) incrementLineNumber() {
     a.lineNumber++
     currentLineNumber := a.lineNumber
     a.progressMutex.Unlock()
-
     if (currentLineNumber % 100) == 0 {
         a.saveProgress()
     }

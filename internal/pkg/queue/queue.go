@@ -33,7 +33,7 @@ func CreateQueue(capacity int) (*Queue, error) {
 // Inserts the item into the queue
 func (q *Queue) Insert(item string) error {
     q.mu.Lock()
-         defer q.mu.Unlock()
+    defer q.mu.Unlock()
     if len(q.q) < int(q.capacity) {
         q.q = append(q.q, item)
         return nil
@@ -44,7 +44,7 @@ func (q *Queue) Insert(item string) error {
 // Removes the oldest element from the queue
 func (q *Queue) Remove() (string, error) {
     q.mu.Lock()
-         defer q.mu.Unlock()
+    defer q.mu.Unlock()
     if len(q.q) > 0 {
         item := q.q[0]
         q.q = q.q[1:]

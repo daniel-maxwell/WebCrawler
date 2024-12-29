@@ -35,23 +35,24 @@ var (
 
     // HTTP client with custom settings
     httpClient = &http.Client{
-        Timeout: 15 * time.Second,
+        Timeout: 5 * time.Second,
         Transport: &http.Transport{
             MaxIdleConnsPerHost: 10,
         },
     }
 )
 
-func Init() {
+func Init() error {
     // Load user agents
     jsonFile, err := os.Open("internal/pkg/fetcher/data/userAgents.json")
     if err != nil {
-        log.Fatalf("failed to read user agents file: %v", err)
+        return fmt.Errorf("failed to read user agents file: %v", err)
     }
     defer jsonFile.Close()
     if err := json.NewDecoder(jsonFile).Decode(&uaData); err != nil {
-        log.Fatalf("Error decoding JSON: %v", err)
+        return fmt.Errorf("Error decoding user agents JSON: %v", err)
     }
+    return nil
 }
 
 // Fetch orchestrates the fetching process.
@@ -148,11 +149,7 @@ func fetchContent(fullURL string) (string, error) {
 
 // Checks if the extracted PageData is sufficient.
 func IsDataSufficient(pd PageData) bool {
-    minContentLength := 50
-    if len(pd.VisibleText) >= minContentLength && pd.Title != "" {
-        return true
-    }
-    return false
+    return len(pd.VisibleText) >= 20
 }
 
 // Extracts data from HTML content and populates PageData.
@@ -236,7 +233,7 @@ var fetchRenderedContent = func(fullURL string) (string, error) {
     defer taskCancel()
 
     // Add a timeout to the context
-    taskCtx, timeoutCancel := context.WithTimeout(taskCtx, 30*time.Second)
+    taskCtx, timeoutCancel := context.WithTimeout(taskCtx, 5 * time.Second)
     defer timeoutCancel()
 
     // Fetch the rendered HTML content

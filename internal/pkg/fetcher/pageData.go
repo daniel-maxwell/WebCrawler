@@ -6,29 +6,29 @@ import (
 
 // Data structure to store and organize relevant information from the page
 type PageData struct {
-    URL             	string
-    CanonicalURL    	string
-    Title           	string
-    Charset         	string
-    MetaDescription 	string
-    MetaKeywords    	string
-    RobotsMeta      	string
-    Language        	string
-    Headings        	map[string][]string
-    AltTexts        	[]string
-    AnchorTexts     	[]string
-    InternalLinks   	[]string
-    ExternalLinks   	[]string
-    StructuredData  	[]string
-    OpenGraph       	map[string]string
-    Author          	string
-    DatePublished   	time.Time
-    DateModified    	time.Time
-    Categories      	[]string
-    Tags            	[]string
-    SocialLinks     	[]string
-    VisibleText     	string
-    LoadTime        	time.Duration
-    IsSecure        	bool
-    LastCrawled     	time.Time
+    URL             string              `json:"url"`
+    CanonicalURL    string              `json:"canonical_url"`
+    Title           string              `json:"title"`
+    Charset         string              `json:"charset"`
+    MetaDescription string              `json:"meta_description"`
+    MetaKeywords    string              `json:"meta_keywords"`
+    RobotsMeta      string              `json:"robots_meta"`
+    Language        string              `json:"language"`
+    Headings        map[string][]string `json:"headings"`
+    AltTexts        []string            `json:"alt_texts"`
+    AnchorTexts     []string            `json:"anchor_texts"`
+    InternalLinks   []string            `json:"internal_links"`
+    ExternalLinks   []string            `json:"external_links"`
+    StructuredData  []string            `json:"structured_data"`
+    OpenGraph       map[string]string   `json:"open_graph"`
+    Author          string              `json:"author"`
+    DatePublished   time.Time           `json:"date_published"`
+    DateModified    time.Time           `json:"date_modified"`
+    Categories      []string            `json:"categories"`
+    Tags            []string            `json:"tags"`
+    SocialLinks     []string            `json:"social_links"`
+    VisibleText     string              `json:"visible_text"`
+    LoadTime        time.Duration       `json:"load_time"`
+    IsSecure        bool                `json:"is_secure"`
+    LastCrawled     time.Time           `json:"last_crawled"`
 }

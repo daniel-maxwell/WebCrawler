@@ -12,6 +12,8 @@ require (
 	github.com/antchfx/xmlquery v1.2.4 // indirect
 	github.com/antchfx/xpath v1.1.8 // indirect
 	github.com/benjaminestes/robots v1.0.0 // indirect
+	github.com/bits-and-blooms/bitset v1.20.0 // indirect
+	github.com/bits-and-blooms/bloom/v3 v3.7.0 // indirect
 	github.com/chromedp/cdproto v0.0.0-20241022234722-4d5d5faf59fb // indirect
 	github.com/chromedp/chromedp v0.11.1 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
