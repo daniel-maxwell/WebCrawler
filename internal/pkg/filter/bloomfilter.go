@@ -9,6 +9,7 @@ import (
 	"github.com/bits-and-blooms/bloom/v3"
 )
 
+// This is a wrapper around a Bloom filter that provides thread-safe access to it.
 type BloomFilterManager struct {
     filter      *bloom.BloomFilter
     mu          sync.Mutex
@@ -17,6 +18,7 @@ type BloomFilterManager struct {
     saveCounter int
 }
 
+// Creates a new BloomFilterManager instance.
 func NewBloomFilterManager(savePath string, saveEvery int, capacity int, fpRate float64) (*BloomFilterManager, error) {
 	manager := &BloomFilterManager{
 		savePath:   savePath,
@@ -39,6 +41,7 @@ func NewBloomFilterManager(savePath string, saveEvery int, capacity int, fpRate 
 	return manager, nil
 }
 
+// Loads a Bloom filter from disk.
 func loadBloomFilter(path string) (*bloom.BloomFilter, error) {
 	// Check if the file exists
 	file, err := os.Open(path)
