@@ -193,8 +193,8 @@ func ExtractVisibleTextFromString(content string) string {
 // Extracts visible text from an HTML node.
 func ExtractVisibleText(n *html.Node) string {
     var buf bytes.Buffer
-    var f func(*html.Node)
-    f = func(n *html.Node) {
+    var extract func(*html.Node)
+    extract = func(n *html.Node) {
         if n.Type == html.TextNode && !isNonVisibleParent(n.Parent) {
             text := strings.TrimSpace(n.Data)
             if len(text) > 0 {
@@ -202,10 +202,10 @@ func ExtractVisibleText(n *html.Node) string {
             }
         }
         for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+            extract(c)
         }
     }
-    f(n)
+    extract(n)
     return buf.String()
 }
 

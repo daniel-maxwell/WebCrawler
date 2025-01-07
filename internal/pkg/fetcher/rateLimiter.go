@@ -25,8 +25,6 @@ var (
     sleepFunc               = time.Sleep
 )
 
-// Does this take in to account the robotsMeta tag?
-
 // Checks if crawling is permitted for the given URL
 // and enforces the Crawl-delay specified in robots.txt.
 func waitForPermission(targetURL string) error {
