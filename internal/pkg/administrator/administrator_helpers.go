@@ -1,5 +1,10 @@
 package administrator
 
+import (
+	"math"
+	"time"
+)
+
 func (a *Administrator) incrementLineNumber() {
     a.progressMutex.Lock()
     a.lineNumber++
@@ -22,3 +27,17 @@ func (a *Administrator) getDomainVisitCount(domain string) int {
     return a.domainVisits[domain]
 }
 
+func (a *Administrator) getQueueUsage() float64 {
+    return float64(a.urlQueue.Length()) / float64(queueCapacity)
+}
+
+func (a *Administrator) sleepBasedOnQueueSize() {
+    usage := a.getQueueUsage()
+    sleepMs := math.Min(
+        float64(maxSleepMs),
+        math.Max(usage * float64(maxSleepMs), 0),
+    )
+    if sleepMs > 0 {
+        time.Sleep(time.Duration(sleepMs) * time.Millisecond)
+    }
+}

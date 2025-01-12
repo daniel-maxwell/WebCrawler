@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+
 	//"encoding/json"
 	"webcrawler/internal/pkg/fetcher"
 	bloomfilter "webcrawler/internal/pkg/filter"
@@ -20,9 +21,10 @@ import (
 // TODO: Investigate the following constants to optimize for production
 const (
 	numReaderWorkers  = 3
-	numFetcherWorkers = 30
+	numFetcherWorkers = 10
+	queueCapacity     = 100000
 	domainLimit       = 35
-	queueCapacity     = 1000000
+	maxSleepMs        = 10000
 )
 
 type Administrator struct {
@@ -53,7 +55,7 @@ func NewAdministrator(progressFilePath string) *Administrator {
 	}
 
 	// Create a new bloom filter manager - capacity will need to be increased for prod
-	filter, err := bloomfilter.NewBloomFilterManager("internal/pkg/filter/data/bloomfilter.dat", 1000, 100000, 0.01)
+	filter, err := bloomfilter.NewBloomFilterManager("internal/pkg/filter/data/bloomfilter.dat", 1000, 1000000, 0.01)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create bloom filter: %v", err))
 	}
@@ -61,7 +63,7 @@ func NewAdministrator(progressFilePath string) *Administrator {
 	return &Administrator{
 		ctx:          ctx,
 		cancel:       cancel,
-		urlChan:      make(chan string, 100), // TODO: Investigate buffer size requirements
+		urlChan:      make(chan string, 50), // TODO: Investigate buffer size requirements
 		progressFile: progressFilePath,
 		bloomFilter:  filter,
 		urlQueue:     q,
@@ -87,43 +89,44 @@ func (a *Administrator) Run() {
 	// Continuous loop
 	for {
 		select {
-            case <-a.ctx.Done():
-                fmt.Println("Shutting down Run loop")
-                close(a.urlChan) // No more URLs read from file
-                a.wg.Wait()
-                return
-            default:
-                a.lineNumber = a.loadProgress()
+		case <-a.ctx.Done():
+			fmt.Println("~~~SHUTTING DOWN~~~")
+			close(a.urlChan) // No more URLs read from file
+			a.wg.Wait()
+			return
+		default:
+			a.lineNumber = a.loadProgress()
 
-                file, err := os.Open("internal/pkg/administrator/data/top-1m.txt")
-                if err != nil {
-                    log.Fatal(err)
-                }
+			file, err := os.Open("internal/pkg/administrator/data/top-1m.txt")
+			if err != nil {
+				log.Fatal(err)
+			}
 
-                scanner := bufio.NewScanner(file)
-                if err := a.updateProgress(scanner); err != nil {
-                    a.lineNumber = 0
-                    file.Seek(0, 0)
-                    scanner = bufio.NewScanner(file)
-                }
+			scanner := bufio.NewScanner(file)
+			if err := a.updateProgress(scanner); err != nil {
+				a.lineNumber = 0
+				file.Seek(0, 0)
+				scanner = bufio.NewScanner(file)
+			}
 
-                for scanner.Scan() {
-                    select {
-                    case <-a.ctx.Done():
-                        file.Close()
-                        // We don't close urlChan here again, it's done above.
-                        return
-                    default:
-                        url := scanner.Text()
-                        a.urlChan <- url
-                    }
-                }
-                file.Close()
+			for scanner.Scan() {
+				select {
+				case <-a.ctx.Done():
+					file.Close()
+					// We don't close urlChan here again, it's done above.
+					return
+				default:
+					url := scanner.Text()
+					a.sleepBasedOnQueueSize()
+					a.urlChan <- url
+				}
+			}
+			file.Close()
 
-                // Once done reading file, reset lineNumber and save progress, then restart.
-                a.lineNumber = 0
-                a.saveProgress()
-        }
+			// Once done reading file, reset lineNumber and save progress, then restart.
+			a.lineNumber = 0
+			a.saveProgress()
+		}
 	}
 }
 
@@ -131,43 +134,43 @@ func (a *Administrator) readerWorker(id int) {
 	defer a.wg.Done()
 	for {
 		select {
-            case <-a.ctx.Done():
-                return
-            case url, ok := <-a.urlChan:
-                if !ok {
-                    return // channel closed
-                }
-                if a.bloomFilter.IsVisited(url) {
-                    continue // URL already visited
-                }
-                retryTime := 1.3
-                // Insert URL into the queue, retry if full
-                for {
-                    if retryTime > 10 {
-                        log.Printf("Worker %d: failed to insert %s after 3 retries", id, url)
-                        a.incrementLineNumber()
-                        break
-                    }
-                    err := a.urlQueue.Insert(url)
-                    if err == nil { // Successfully inserted
-                        if domain, err := utils.GetDomainFromURL(url); err == nil {
-                            a.incrementDomainVisitCount(domain)
-                        }
-                        a.incrementLineNumber()
-                        break
-                    } else {
-                        // Queue full, wait a bit and retry
-                        log.Printf("Worker %d: failed to insert %s: %v", id, url, err)
-                        time.Sleep(time.Duration(retryTime) * time.Second)
-                        retryTime *= retryTime // Exponential backoff
-                        select {
-                            case <-a.ctx.Done():
-                                return
-                            default:
-                        }
-                    }
-                }
-        }
+		case <-a.ctx.Done():
+			return
+		case url, ok := <-a.urlChan:
+			if !ok {
+				return // channel closed
+			}
+			if a.bloomFilter.IsVisited(url) {
+				continue // URL already visited
+			}
+			retryTime := 1.3
+			// Insert URL into the queue, retry if full
+			for {
+				if retryTime > 10 {
+					log.Printf("Worker %d: failed to insert %s after 3 retries", id, url)
+					a.incrementLineNumber()
+					break
+				}
+				err := a.urlQueue.Insert(url)
+				if err == nil { // Successfully inserted
+					if domain, err := utils.GetDomainFromURL(url); err == nil {
+						a.incrementDomainVisitCount(domain)
+					}
+					a.incrementLineNumber()
+					break
+				} else {
+					// Queue full, wait a bit and retry
+					log.Printf("Worker %d: failed to insert %s: %v", id, url, err)
+					time.Sleep(time.Duration(retryTime) * time.Second)
+					retryTime *= retryTime // Exponential backoff
+					select {
+					case <-a.ctx.Done():
+						return
+					default:
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -175,101 +178,88 @@ func (a *Administrator) fetcherWorker(id int) {
 	defer a.wg.Done()
 	for {
 		select {
-            case <-a.ctx.Done():
-                return
-            default:
-                url, err := a.urlQueue.Remove()
-                if err != nil {
-                    // Queue is empty, wait a bit before trying again
-                    time.Sleep(50 * time.Millisecond)
-                    continue
-                }
-                // We have a URL, let's fetch it
-                pageData, err := fetcher.Fetch(url)
-                if err != nil {
-                    log.Printf("Worker %d: failed to fetch %s: %v", id, url, err)
-                    continue
-                }
+		case <-a.ctx.Done():
+			return
+		default:
+			url, err := a.urlQueue.Remove()
+			if err != nil {
+				// Queue is empty, wait a bit before trying again
+				time.Sleep(50 * time.Millisecond)
+				continue
+			}
+			// We have a URL, let's fetch it
+			pageData, err := fetcher.Fetch(url)
+			if err != nil {
+				log.Printf("Worker %d: failed to fetch %s: %v", id, url, err)
+				continue
+			}
 
-                a.bloomFilter.MarkVisited(url)
+			a.bloomFilter.MarkVisited(url)
 
-                /* // Uncomment this code to print the fetched data (JSON format)!
-                pageDataJSONBytes, err := json.MarshalIndent(pageData, "", "  ")
-                if err != nil {
-                    panic(err)
-                }
-                fmt.Println(string(pageDataJSONBytes))
-                */
-                fmt.Printf("Worker %d: Successfully Fetched %s\n", id, url)
+			/* // Uncomment this code to print the fetched data (JSON format)!
+			   pageDataJSONBytes, err := json.MarshalIndent(pageData, "", "  ")
+			   if err != nil {
+			       panic(err)
+			   }
+			   fmt.Println(string(pageDataJSONBytes))
+			*/
 
-                // This code tries to enqueue links found on the page in a way that
-                // avoids too many links from the same domain being contiguous in the queue.
-                totalLinksEnqueued := 0
-                internalLinksIdx := 0
-                externalLinksIdx := 0
+			// This code tries to enqueue links found on the page in a way that
+			// avoids too many links from the same domain being contiguous in the queue.
+			totalLinksEnqueued := 0
+			internalLinksIdx := 0
+			externalLinksIdx := 0
 
-                currentDomain, domainParseErr := utils.GetDomainFromURL(url)
+			currentDomain, domainParseErr := utils.GetDomainFromURL(url)
 
-                for totalLinksEnqueued < 10 {
+			fmt.Printf("Worker %d: Successfully Fetched: [%s] | Queue Usage: [%v] | DVC: [%v]\n", id, url, a.getQueueUsage(), a.getDomainVisitCount(currentDomain))
 
-                    if internalLinksIdx >= len(pageData.InternalLinks) &&
-                        externalLinksIdx >= len(pageData.ExternalLinks) {
-                        break
-                    }
+			for totalLinksEnqueued < 10 {
 
-                    if domainParseErr == nil && a.getDomainVisitCount(currentDomain) < domainLimit {
+				if internalLinksIdx >= len(pageData.InternalLinks) &&
+					externalLinksIdx >= len(pageData.ExternalLinks) {
+					break
+				}
 
-                        for internalLinksIdx < len(pageData.InternalLinks) &&
-                            a.bloomFilter.IsVisited(pageData.InternalLinks[internalLinksIdx]) {
-                            internalLinksIdx++
-                        }
+				if domainParseErr == nil && a.getDomainVisitCount(currentDomain) < domainLimit {
 
-                        if internalLinksIdx < len(pageData.InternalLinks) {
-                            retryTime := 1.3
-                            for retryTime < 10 {
-                                err := a.urlQueue.Insert(pageData.InternalLinks[internalLinksIdx])
-                                if err == nil { // Success, increment domain visit count and break out of the loop.
-                                    a.incrementDomainVisitCount(currentDomain)
-                                    break
-                                }
-                                // If we got here, err != nil, so log the failure and retry
-                                log.Printf("Worker %d: failed inserting %s: %v", id, pageData.InternalLinks[internalLinksIdx], err)
-                                time.Sleep(time.Duration(retryTime) * time.Second)
-                                retryTime *= retryTime // Exponential backoff
-                            }
-                            totalLinksEnqueued++
-                            internalLinksIdx++
-                        }
-                    }
+					for internalLinksIdx < len(pageData.InternalLinks) &&
+						a.bloomFilter.IsVisited(pageData.InternalLinks[internalLinksIdx]) {
+						internalLinksIdx++
+					}
 
-                    for externalLinksIdx < len(pageData.ExternalLinks) &&
-                        a.bloomFilter.IsVisited(pageData.ExternalLinks[externalLinksIdx]) {
-                        externalLinksIdx++
-                    }
+					if internalLinksIdx < len(pageData.InternalLinks) {
+						err := a.urlQueue.Insert(pageData.InternalLinks[internalLinksIdx])
+						if err == nil { // Success, increment domain visit count and break out of the loop.
+							a.incrementDomainVisitCount(currentDomain)
+							totalLinksEnqueued++
+						}
+						internalLinksIdx++
+					}
 
-                    if externalLinksIdx < len(pageData.ExternalLinks) {
-                        domain, err := utils.GetDomainFromURL(pageData.ExternalLinks[externalLinksIdx])
-                        if err == nil {
-                            visitsCount := a.getDomainVisitCount(domain)
-                            if visitsCount < domainLimit {
-                                retryTime := 1.3
-                                for retryTime <= 10 {
-                                    err := a.urlQueue.Insert(pageData.ExternalLinks[externalLinksIdx])
-                                    if err == nil { // Success! Break out of the loop.
-                                        a.incrementDomainVisitCount(domain)
-                                        break
-                                    }
-                                    // If we got here, err != nil, so log the failure and retry
-                                    log.Printf("Worker %d: failed to insert %s: %v", id, pageData.ExternalLinks[externalLinksIdx], err)
-                                    time.Sleep(time.Duration(retryTime) * time.Second)
-                                    retryTime *= retryTime // Exponential backoff
-                                }
-                                totalLinksEnqueued++
-                                externalLinksIdx++
-                            }
-                        }
-                    }
-                }
+				} else {
+					internalLinksIdx = len(pageData.InternalLinks)
+				}
+
+				for externalLinksIdx < len(pageData.ExternalLinks) &&
+					a.bloomFilter.IsVisited(pageData.ExternalLinks[externalLinksIdx]) {
+					externalLinksIdx++
+				}
+
+				if externalLinksIdx < len(pageData.ExternalLinks) {
+					domain, err := utils.GetDomainFromURL(pageData.ExternalLinks[externalLinksIdx])
+					if err == nil && a.getDomainVisitCount(domain) < domainLimit {
+						err := a.urlQueue.Insert(pageData.ExternalLinks[externalLinksIdx])
+						if err == nil {
+							a.incrementDomainVisitCount(domain)
+							totalLinksEnqueued++
+						} else {
+							log.Printf("Worker %d: failed to insert %s: %v", id, pageData.ExternalLinks[externalLinksIdx], err)
+						}
+						externalLinksIdx++
+					}
+				}
+			}
 		}
 	}
 }
