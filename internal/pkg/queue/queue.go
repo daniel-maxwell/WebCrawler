@@ -30,7 +30,7 @@ func CreateQueue(capacity int) (*Queue, error) {
     }, nil
 }
 
-// Inserts the item into the queue
+// Inserts an item into the queue
 func (q *Queue) Insert(item string) error {
     q.mu.Lock()
     defer q.mu.Unlock()

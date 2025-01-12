@@ -64,6 +64,9 @@ func loadBloomFilter(path string) (*bloom.BloomFilter, error) {
 
 // Save persists the Bloom filter to disk.
 func (bfm *BloomFilterManager) Save() error {
+	for i := 0; i < 10000; i++ {
+		fmt.Println("Saving BLOOM FILTER") 
+	}
     bfm.mu.Lock()
     defer bfm.mu.Unlock()
 

@@ -9,7 +9,6 @@ import (
     "io"
     "log"
     "net/http"
-    "net/url"
     "strings"
     "sync"
     "time"
@@ -18,6 +17,7 @@ import (
     "github.com/chromedp/chromedp"
     "golang.org/x/net/html"
     "golang.org/x/net/html/atom"
+    "webcrawler/internal/pkg/utils"
 )
 
 type UAData struct {
@@ -58,7 +58,7 @@ func Init() error {
 // Fetch orchestrates the fetching process.
 // It tries using the HTTP client and falls back to chromedp if necessary.
 func Fetch(shortUrl string) (PageData, error) {
-    fullURL, err := buildFullUrl(shortUrl)
+    fullURL, err := utils.BuildFullUrl(shortUrl)
     if err != nil {
         return PageData{}, fmt.Errorf("failed to build full URL from short URL %v: %v", shortUrl, err)
     }
@@ -248,19 +248,6 @@ var fetchRenderedContent = func(fullURL string) (string, error) {
     }
 
     return content, nil
-}
-
-// buildFullUrl constructs the full URL from a short URL.
-func buildFullUrl(shortUrl string) (string, error) {
-    // Prepend scheme if missing
-    if !strings.HasPrefix(shortUrl, "http://") && !strings.HasPrefix(shortUrl, "https://") {
-        shortUrl = "https://" + shortUrl
-    }
-    parsedURL, err := url.Parse(shortUrl)
-    if err != nil {
-        return "", fmt.Errorf("invalid URL %v: %v", shortUrl, err)
-    }
-    return parsedURL.String(), nil
 }
 
 func getRandomUserAgent() string {
