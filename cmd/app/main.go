@@ -10,6 +10,6 @@ import (
 func main() {
 	fmt.Println("Main Called")
 	administrator := administrator.NewAdministrator("internal/pkg/administrator/data/progress.txt")
-	administrator.Run() // Careful! This will run indefinitely.
-	administrator.ShutDown()
+	defer administrator.ShutDown()
+    administrator.Run() // Careful! This will run indefinitely.
 }
