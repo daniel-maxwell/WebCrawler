@@ -24,7 +24,7 @@ const (
 	numFetcherWorkers = 10
 	queueCapacity     = 100000
 	domainLimit       = 35
-	maxSleepMs        = 10000
+	maxSleepMs        = 5000
 )
 
 type Administrator struct {

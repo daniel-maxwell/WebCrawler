@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// GetDomainFromURL extracts the host domain from a URL.
+// Extracts the host domain from a URL.
 func GetDomainFromURL(inputURL string) (string, error) {
 	if !strings.HasPrefix(inputURL, "http://") && !strings.HasPrefix(inputURL, "https://") {
         inputURL = "https://" + inputURL
@@ -19,7 +19,7 @@ func GetDomainFromURL(inputURL string) (string, error) {
 	return strings.TrimPrefix(parsedURL.Hostname(), "www."), nil
 }
 
-// buildFullUrl constructs the full URL from a short URL.
+// Constructs the full URL from a short URL.
 func BuildFullUrl(shortUrl string) (string, error) {
     // Prepend scheme if missing
     if !strings.HasPrefix(shortUrl, "http://") && !strings.HasPrefix(shortUrl, "https://") {

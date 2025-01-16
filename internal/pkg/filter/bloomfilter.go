@@ -6,23 +6,24 @@ import (
 	"log"
 	"os"
 	"sync"
+
 	"github.com/bits-and-blooms/bloom/v3"
 )
 
 // This is a wrapper around a Bloom filter that provides thread-safe access to it.
 type BloomFilterManager struct {
-    filter      *bloom.BloomFilter
-    mu          sync.Mutex
-    savePath    string
-    saveEvery   int
-    saveCounter int
+	filter      *bloom.BloomFilter
+	mu          sync.Mutex
+	savePath    string
+	saveEvery   int
+	saveCounter int
 }
 
 // Creates a new BloomFilterManager instance.
 func NewBloomFilterManager(savePath string, saveEvery int, capacity int, fpRate float64) (*BloomFilterManager, error) {
 	manager := &BloomFilterManager{
-		savePath:   savePath,
-		saveEvery:  saveEvery,
+		savePath:  savePath,
+		saveEvery: saveEvery,
 	}
 
 	// Attempt to load the bloom filter from disk
@@ -52,7 +53,7 @@ func loadBloomFilter(path string) (*bloom.BloomFilter, error) {
 		return nil, fmt.Errorf("error while opening bloom filter file on disk: %v", err)
 	}
 	defer file.Close()
-	
+
 	reader := bufio.NewReader(file)
 	filter := &bloom.BloomFilter{}
 	if _, err := filter.ReadFrom(reader); err != nil { // problems reading the file
@@ -64,41 +65,41 @@ func loadBloomFilter(path string) (*bloom.BloomFilter, error) {
 
 // Save persists the Bloom filter to disk.
 func (bfm *BloomFilterManager) Save() error {
-    bfm.mu.Lock()
-    defer bfm.mu.Unlock()
+	bfm.mu.Lock()
+	defer bfm.mu.Unlock()
 
-    file, err := os.Create(bfm.savePath)
-    if err != nil {
-        return err
-    }
-    defer file.Close()
+	file, err := os.Create(bfm.savePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
 
-    writer := bufio.NewWriter(file)
-    _, err = bfm.filter.WriteTo(writer)
-    if err != nil {
-        return err
-    }
-    return writer.Flush()
+	writer := bufio.NewWriter(file)
+	_, err = bfm.filter.WriteTo(writer)
+	if err != nil {
+		return err
+	}
+	return writer.Flush()
 }
 
 // Checks if a URL has been visited.
 func (bfm *BloomFilterManager) IsVisited(url string) bool {
-    bfm.mu.Lock()
-    defer bfm.mu.Unlock()
-    return bfm.filter.Test([]byte(url))
+	bfm.mu.Lock()
+	defer bfm.mu.Unlock()
+	return bfm.filter.Test([]byte(url))
 }
 
 // Marks a URL as visited and triggers periodic saving.
 func (bfm *BloomFilterManager) MarkVisited(url string) {
-    bfm.mu.Lock()
-    defer bfm.mu.Unlock()
-    bfm.filter.Add([]byte(url))
-    bfm.saveCounter++
-    if bfm.saveCounter >= bfm.saveEvery {
-        err := bfm.Save()
-        if err != nil {
-            log.Printf("Error saving Bloom filter: %v", err)
-        }
-        bfm.saveCounter = 0
-    }
+	bfm.mu.Lock()
+	defer bfm.mu.Unlock()
+	bfm.filter.Add([]byte(url))
+	bfm.saveCounter++
+	if bfm.saveCounter >= bfm.saveEvery {
+		err := bfm.Save()
+		if err != nil {
+			log.Printf("Error saving Bloom filter: %v", err)
+		}
+		bfm.saveCounter = 0
+	}
 }

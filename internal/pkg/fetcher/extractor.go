@@ -315,7 +315,7 @@ func extractLanguage(doc *html.Node) string {
 func extractSocialLinks(externalLinks []string) []string {
     var socialLinks []string
     for _, link := range externalLinks {
-        if strings.Contains(link, "facebook.com") ||
+        if  strings.Contains(link, "facebook.com") ||
             strings.Contains(link, "twitter.com") ||
 			strings.Contains(link, "x.com") ||
             strings.Contains(link, "instagram.com") ||

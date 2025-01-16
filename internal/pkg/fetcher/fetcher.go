@@ -149,8 +149,7 @@ func fetchContent(fullURL string) (string, error) {
 
 // Checks if the extracted PageData is sufficient.
 func IsDataSufficient(pd PageData) bool {
-    return true
-    //return len(pd.VisibleText) >= 20
+    return len(pd.VisibleText) >= 20
 }
 
 // Extracts data from HTML content and populates PageData.
