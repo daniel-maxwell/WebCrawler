@@ -89,7 +89,6 @@ func (a *Administrator) Run() {
 	for {
 		select {
 		case <-a.ctx.Done():
-			fmt.Println("~~~SHUTTING DOWN~~~")
 			close(a.urlChan) // No more URLs read from file
 			a.wg.Wait()
 			return

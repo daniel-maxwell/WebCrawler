@@ -66,8 +66,11 @@ func Init() error {
 // Fetch orchestrates the fetching process.
 // It tries using the HTTP client and falls back to chromedp if necessary.
 func Fetch(shortUrl string) (PageData, error) {
+
     fullURL, err := utils.BuildFullUrl(shortUrl)
+
     if err != nil {
+        fmt.Printf("Failed to build full URL from short URL %v: %v\n", shortUrl, err)
         return PageData{}, fmt.Errorf("failed to build full URL from short URL %v: %v", shortUrl, err)
     }
 
@@ -79,6 +82,7 @@ func Fetch(shortUrl string) (PageData, error) {
     // Wait for permission from the rate limiter
     err = waitForPermission(fullURL)
     if err != nil {
+        fmt.Printf("Error in rate limiter for URL %s: %v\n", fullURL, err)
         if errors.Is(err, ErrCrawlingDisallowed) {
             log.Printf("Crawling disallowed for URL: %s", fullURL)
             return PageData{}, err
@@ -109,7 +113,6 @@ func Fetch(shortUrl string) (PageData, error) {
     }
 
     // Content is insufficient; fallback to rendering with chromedp
-    log.Printf("Data insufficient for URL %s, falling back to chromedp", fullURL)
     startTime = time.Now()
     renderedContent, err := fetchRenderedContent(fullURL)
     pageData.LoadTime = time.Since(startTime)
@@ -153,7 +156,7 @@ func fetchContent(fullURL string) (string, error) {
     if err != nil {
         return "", fmt.Errorf("failed to read response body: %v", err)
     }
-
+    
     // Check if we hit the limit and log a warning if so
     if len(bodyBytes) == int(maxBodySize) {
         log.Printf("Warning: response for %s was truncated to %d bytes", fullURL, maxBodySize)
