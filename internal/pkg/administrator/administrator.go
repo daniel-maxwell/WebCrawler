@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
 	//"encoding/json"
 	"webcrawler/internal/pkg/fetcher"
 	bloomfilter "webcrawler/internal/pkg/filter"
@@ -23,7 +22,7 @@ const (
 	numReaderWorkers  = 3
 	numFetcherWorkers = 10
 	queueCapacity     = 100000
-	domainLimit       = 35
+	domainLimit       = 100
 	maxSleepMs        = 5000
 )
 
@@ -113,7 +112,6 @@ func (a *Administrator) Run() {
 				select {
 				case <-a.ctx.Done():
 					file.Close()
-					// We don't close urlChan here again, it's done above.
 					return
 				default:
 					url := scanner.Text()
@@ -137,6 +135,7 @@ func (a *Administrator) readerWorker(id int) {
 		case <-a.ctx.Done():
 			return
 		case url, ok := <-a.urlChan:
+			a.incrementLineNumber()
 			if !ok {
 				return // channel closed
 			}
@@ -147,8 +146,6 @@ func (a *Administrator) readerWorker(id int) {
 			// Insert URL into the queue, retry if full
 			for {
 				if retryTime > 10 {
-					log.Printf("Worker %d: failed to insert %s after 3 retries", id, url)
-					a.incrementLineNumber()
 					break
 				}
 				err := a.urlQueue.Insert(url)
@@ -156,7 +153,6 @@ func (a *Administrator) readerWorker(id int) {
 					if domain, err := utils.GetDomainFromURL(url); err == nil {
 						a.incrementDomainVisitCount(domain)
 					}
-					a.incrementLineNumber()
 					break
 				} else {
 					// Queue full, wait a bit and retry
@@ -196,6 +192,8 @@ func (a *Administrator) fetcherWorker(id int) {
 
 			a.bloomFilter.MarkVisited(url)
 
+			fmt.Printf("Worker %d: Fetched %s\n", id, url)
+
 			/* // Uncomment this code to print the fetched data (JSON format)!
 			   pageDataJSONBytes, err := json.MarshalIndent(pageData, "", "  ")
 			   if err != nil {
@@ -211,8 +209,6 @@ func (a *Administrator) fetcherWorker(id int) {
 			externalLinksIdx := 0
 
 			currentDomain, domainParseErr := utils.GetDomainFromURL(url)
-
-			fmt.Printf("Worker %d: Successfully Fetched: [%s] | Queue Usage: [%v] | DVC: [%v]\n", id, url, a.getQueueUsage(), a.getDomainVisitCount(currentDomain))
 
 			for totalLinksEnqueued < 10 {
 
@@ -256,8 +252,9 @@ func (a *Administrator) fetcherWorker(id int) {
 						} else {
 							log.Printf("Worker %d: failed to insert %s: %v", id, pageData.ExternalLinks[externalLinksIdx], err)
 						}
-						externalLinksIdx++
+						
 					}
+					externalLinksIdx++
 				}
 			}
 		}
@@ -301,6 +298,7 @@ func (a *Administrator) updateProgress(scanner *bufio.Scanner) error {
 }
 
 func (a *Administrator) ShutDown() {
+	fmt.Printf("Shutting down administrator. Current Crawler Status: {\nQueue Usage: %v\n, Domain Visits: %v\n, Line Number: %v\n, Bloom Filter: %v\n}\n", a.getQueueUsage(), a.domainVisits, a.lineNumber, a.bloomFilter)
 	a.cancel()
 	a.wg.Wait()
 }

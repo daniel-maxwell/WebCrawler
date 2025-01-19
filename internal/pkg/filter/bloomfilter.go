@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"sync"
-
 	"github.com/bits-and-blooms/bloom/v3"
 )
 

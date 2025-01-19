@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"sync"
 	"time"
-	"github.com/EDDYCJY/fake-useragent"
 	"github.com/temoto/robotstxt"
 )
 
@@ -41,6 +40,7 @@ func waitForPermission(targetURL string) error {
         rData = &RobotsData{}
         robotsCache[domain] = rData
     }
+    rData.crawlDelay = min(rData.crawlDelay, 5 * time.Second) // Cap crawl delay at 5 seconds
     robotsCacheMutex.Unlock()
 
     rData.mu.Lock()
@@ -86,7 +86,7 @@ func fetchRobotsData(parsedURL *url.URL, rData *RobotsData) error {
     if err != nil {
         return err
     }
-    req.Header.Set("User-Agent", browser.Random())
+    req.Header.Set("User-Agent", getRandomUserAgent())
 
     resp, err := httpClient.Do(req)
     if err != nil {
@@ -107,7 +107,7 @@ func fetchRobotsData(parsedURL *url.URL, rData *RobotsData) error {
         return nil
     }
 
-    group := robots.FindGroup(browser.Random())
+    group := robots.FindGroup(getRandomUserAgent())
     if group == nil {
         group = robots.FindGroup("*")
     }

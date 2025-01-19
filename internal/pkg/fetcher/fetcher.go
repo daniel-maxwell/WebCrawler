@@ -37,9 +37,17 @@ var (
     httpClient = &http.Client{
         Timeout: 5 * time.Second,
         Transport: &http.Transport{
+            MaxIdleConns: 20,
             MaxIdleConnsPerHost: 10,
+            TLSHandshakeTimeout: 5 * time.Second,
+            IdleConnTimeout: 5 * time.Second,
         },
     }
+)
+
+const (
+    maxBodySize = 2 * 1024 * 1024 // 2 MB
+    maxParseTime = 5 * time.Second
 )
 
 func Init() error {
@@ -50,7 +58,7 @@ func Init() error {
     }
     defer jsonFile.Close()
     if err := json.NewDecoder(jsonFile).Decode(&uaData); err != nil {
-        return fmt.Errorf("Error decoding user agents JSON: %v", err)
+        return fmt.Errorf("error decoding user agents JSON: %v", err)
     }
     return nil
 }
@@ -120,6 +128,7 @@ func Fetch(shortUrl string) (PageData, error) {
     return pageData, nil
 }
 
+
 // Fetches the page content using the HTTP client.
 func fetchContent(fullURL string) (string, error) {
     req, err := http.NewRequest("GET", fullURL, nil)
@@ -138,9 +147,16 @@ func fetchContent(fullURL string) (string, error) {
         return "", fmt.Errorf("received non-200 response code: %d", resp.StatusCode)
     }
 
-    bodyBytes, err := io.ReadAll(resp.Body)
+    limitedReader := io.LimitReader(resp.Body, maxBodySize) // Limit body size
+
+    bodyBytes, err := io.ReadAll(limitedReader)
     if err != nil {
         return "", fmt.Errorf("failed to read response body: %v", err)
+    }
+
+    // Check if we hit the limit and log a warning if so
+    if len(bodyBytes) == int(maxBodySize) {
+        log.Printf("Warning: response for %s was truncated to %d bytes", fullURL, maxBodySize)
     }
 
     content := string(bodyBytes)
@@ -149,7 +165,28 @@ func fetchContent(fullURL string) (string, error) {
 
 // Checks if the extracted PageData is sufficient.
 func IsDataSufficient(pd PageData) bool {
-    return len(pd.VisibleText) >= 20
+    return true
+    //return len(pd.VisibleText) >= 20
+}
+
+// Tries to parse HTML, returns an error if parsing fails or takes too long.
+func parseHTMLWithTimeout(content string, maxDuration time.Duration) (*html.Node, error) {
+    done := make(chan struct{})
+    var doc *html.Node
+    var err error
+
+    go func() {
+        doc, err = html.Parse(strings.NewReader(content))
+        close(done)
+    }()
+
+    select {
+    case <-done:
+        // Finished parsing
+        return doc, err
+    case <-time.After(maxDuration):
+        return nil, fmt.Errorf("HTML parsing took longer than %v", maxDuration)
+    }
 }
 
 // Extracts data from HTML content and populates PageData.
@@ -157,12 +194,13 @@ func ExtractPageData(content, baseURL string) (PageData, error) {
     var pd PageData
     pd.URL = baseURL
 
-    doc, err := html.Parse(strings.NewReader(content))
+    doc, err := parseHTMLWithTimeout(content, maxParseTime)
     if err != nil {
+        fmt.Printf("Failed to parse HTML content for URL: [%v] | Reason: [%v]\n", baseURL, err)
         return pd, err
     }
 
-    // Extract various data
+    // Extract page data
     pd.Title = extractTitle(doc)
     pd.MetaDescription, pd.MetaKeywords, pd.RobotsMeta, pd.Charset = extractMetaTags(doc)
     pd.CanonicalURL = extractCanonicalURL(doc)
