@@ -8,6 +8,7 @@ import (
     "fmt"
     "io"
     "log"
+    "net"
     "net/http"
     "strings"
     "sync"
@@ -35,12 +36,17 @@ var (
 
     // HTTP client with custom settings
     httpClient = &http.Client{
-        Timeout: 5 * time.Second,
+        Timeout: 10 * time.Second,
         Transport: &http.Transport{
-            MaxIdleConns: 20,
-            MaxIdleConnsPerHost: 10,
-            TLSHandshakeTimeout: 5 * time.Second,
-            IdleConnTimeout: 5 * time.Second,
+            DialContext: (&net.Dialer{
+                Timeout:   5 * time.Second,
+                KeepAlive: 30 * time.Second,
+            }).DialContext,
+            TLSHandshakeTimeout:   5 * time.Second,
+            ResponseHeaderTimeout: 5 * time.Second,
+            IdleConnTimeout:       5 * time.Second,
+            MaxIdleConns:          20,
+            MaxIdleConnsPerHost:   10,
         },
     }
 )
@@ -65,7 +71,7 @@ func Init() error {
 
 // Fetch orchestrates the fetching process.
 // It tries using the HTTP client and falls back to chromedp if necessary.
-func Fetch(shortUrl string) (PageData, error) {
+func Fetch(ctx context.Context, shortUrl string) (PageData, error) {
 
     fullURL, err := utils.BuildFullUrl(shortUrl)
 
@@ -80,7 +86,7 @@ func Fetch(shortUrl string) (PageData, error) {
     pageData.IsSecure = strings.HasPrefix(fullURL, "https://")
 
     // Wait for permission from the rate limiter
-    err = waitForPermission(fullURL)
+    err = waitForPermission(ctx, fullURL)
     if err != nil {
         fmt.Printf("Error in rate limiter for URL %s: %v\n", fullURL, err)
         if errors.Is(err, ErrCrawlingDisallowed) {
@@ -92,7 +98,7 @@ func Fetch(shortUrl string) (PageData, error) {
 
     // Attempt to fetch content using HTTP client
     startTime := time.Now()
-    content, err := fetchContent(fullURL)
+    content, err := fetchContent(ctx, fullURL)
     pageData.LoadTime = time.Since(startTime)
     if err != nil {
         log.Printf("HTTP fetch failed for URL %s: %v", fullURL, err)
@@ -114,7 +120,7 @@ func Fetch(shortUrl string) (PageData, error) {
 
     // Content is insufficient; fallback to rendering with chromedp
     startTime = time.Now()
-    renderedContent, err := fetchRenderedContent(fullURL)
+    renderedContent, err := fetchRenderedContent(ctx, fullURL)
     pageData.LoadTime = time.Since(startTime)
     if err != nil {
         return PageData{}, fmt.Errorf("failed to fetch rendered content from URL %s: %v", fullURL, err)
@@ -133,8 +139,8 @@ func Fetch(shortUrl string) (PageData, error) {
 
 
 // Fetches the page content using the HTTP client.
-func fetchContent(fullURL string) (string, error) {
-    req, err := http.NewRequest("GET", fullURL, nil)
+func fetchContent(ctx context.Context, fullURL string) (string, error) {
+    req, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
     if err != nil {
         return "", fmt.Errorf("failed to create HTTP request: %v", err)
     }
@@ -265,27 +271,39 @@ func isNonVisibleParent(n *html.Node) bool {
 }
 
 // FetchRenderedContent fetches the page content by rendering it using chromedp.
-var fetchRenderedContent = func(fullURL string) (string, error) {
+var fetchRenderedContent = func(ctx context.Context, fullURL string) (string, error) {
     // Initialize Chrome instance (only once per process)
     chromeOnce.Do(initChrome)
 
     // Create a new context for this fetch operation derived from the browser context
-    taskCtx, taskCancel := chromedp.NewContext(browserCtx)
-    defer taskCancel()
+    childCtx, childCancel := chromedp.NewContext(browserCtx)
 
     // Add a timeout to the context
-    taskCtx, timeoutCancel := context.WithTimeout(taskCtx, 5 * time.Second)
-    defer timeoutCancel()
+    combinedCtx, combinedCancel := context.WithCancel(childCtx)
+
+    go func() {
+        select {
+        case <-ctx.Done():
+            // If the caller’s ctx is done, cancel the combined context too
+            combinedCancel()
+        case <-combinedCtx.Done():
+            // If combinedCtx is done first (normal completion), do nothing special
+        }
+    }()
+
+    defer childCancel()
+    defer combinedCancel()
 
     // Fetch the rendered HTML content
     var content string
-    err := chromedp.Run(taskCtx,
+    err := chromedp.Run(
+        combinedCtx,
         chromedp.Navigate(fullURL),
-        chromedp.WaitReady("body"),
+        chromedp.WaitReady("body", chromedp.ByQuery),
         chromedp.OuterHTML("html", &content, chromedp.ByQuery),
     )
     if err != nil {
-        return "", fmt.Errorf("failed to fetch rendered content from URL %s: %v", fullURL, err)
+        return "", fmt.Errorf("failed to fetch rendered content from %s: %v", fullURL, err)
     }
 
     return content, nil

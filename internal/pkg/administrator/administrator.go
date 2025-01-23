@@ -38,6 +38,13 @@ type Administrator struct {
 	urlQueue      *queue.Queue
 	domainVisits  map[string]int
 	domainMutex   sync.Mutex
+	fetcherMap    map[int]LogEntry
+	fetcherMapMutex sync.Mutex
+}
+
+type LogEntry struct {
+    Time    string
+    Message string
 }
 
 func NewAdministrator(progressFilePath string) *Administrator {
@@ -67,6 +74,7 @@ func NewAdministrator(progressFilePath string) *Administrator {
 		bloomFilter:  filter,
 		urlQueue:     q,
 		domainVisits: make(map[string]int),
+		fetcherMap:   make(map[int]LogEntry),
 	}
 }
 
@@ -170,27 +178,39 @@ func (a *Administrator) readerWorker(id int) {
 }
 
 func (a *Administrator) fetcherWorker(id int) {
+	a.setFetcherLog(id, "Fetcher Worker Started")
 	defer a.wg.Done()
 	for {
+		a.setFetcherLog(id, "Fetcher Worker Loop Started")
 		select {
 		case <-a.ctx.Done():
+			a.setFetcherLog(id, "Fetcher Worker Loop Ended Due to ctx.Done()")
 			return
 		default:
+			a.setFetcherLog(id, "Fetcher Worker Loop Default Case")
 			url, err := a.urlQueue.Remove()
+			a.fetcherMap[id] = LogEntry{Time: time.Now().Format("15:04:05"), Message: "Fetcher Worker URL Removed"}
 			if err != nil {
+				a.setFetcherLog(id, "Fetcher Worker Queue Empty, Sleeping for 500ms")
 				// Queue is empty, wait a bit before trying again
-				time.Sleep(50 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 				continue
 			}
-			// We have a URL, let's fetch it
-			pageData, err := fetcher.Fetch(url)
+			a.setFetcherLog(id, "Fetcher Worker URL Found, Fetching...")
+
+			ctx, cancel := context.WithTimeout(a.ctx, 30 * time.Second)
+			pageData, err := fetcher.Fetch(ctx, url) // Fetch the URL
+			cancel()
+
 			if err != nil {
+				a.setFetcherLog(id, "Fetcher Worker Fetch Failed Due to Error " + err.Error())
 				log.Printf("Worker %d: failed to fetch %s: %v", id, url, err)
 				continue
 			}
+			a.setFetcherLog(id, "Fetcher Worker URL Fetched Successfully, URL: " + url)
 
 			a.bloomFilter.MarkVisited(url)
-
+			a.setFetcherLog(id, "Fetcher Worker URL Marked Visited")
 			fmt.Printf("Worker %d: Fetched %s\n", id, url)
 
 			/* // Uncomment this code to print the fetched data (JSON format)!
@@ -206,10 +226,12 @@ func (a *Administrator) fetcherWorker(id int) {
 			totalLinksEnqueued := 0
 			internalLinksIdx := 0
 			externalLinksIdx := 0
-
+			a.setFetcherLog(id, "Fetcher Worker Getting Domain From URL")
 			currentDomain, domainParseErr := utils.GetDomainFromURL(url)
+			a.setFetcherLog(id, "Fetcher Worker Domain Parsed")
 
 			for totalLinksEnqueued < 10 {
+				a.setFetcherLog(id, "Fetcher Worker Looping Through Links")
 
 				if internalLinksIdx >= len(pageData.InternalLinks) &&
 					externalLinksIdx >= len(pageData.ExternalLinks) {
@@ -256,7 +278,9 @@ func (a *Administrator) fetcherWorker(id int) {
 					externalLinksIdx++
 				}
 			}
+			a.setFetcherLog(id, "Fetcher Worker Links Enqueued")
 		}
+		a.setFetcherLog(id, "Fetcher Worker Loop Ended")
 	}
 }
 
@@ -297,7 +321,33 @@ func (a *Administrator) updateProgress(scanner *bufio.Scanner) error {
 }
 
 func (a *Administrator) ShutDown() {
-	fmt.Printf("Shutting down administrator. Current Crawler Status: {\nQueue Usage: %v\n, Domain Visits: %v\n, Line Number: %v\n, Bloom Filter: %v\n}\n", a.getQueueUsage(), a.domainVisits, a.lineNumber, a.bloomFilter)
+	fmt.Printf("Shutting down administrator. Current Crawler Status: {\nQueue Usage: %v\n, Domain Visits: %v\n, Line Number: %v\n, Bloom Filter: %v\n}\n\n\n", a.getQueueUsage(), a.domainVisits, a.lineNumber, a.bloomFilter)
+	for i, logEntry := range a.getFetcherLogs() {
+		fmt.Printf("Fetcher Worker %d: %v\n", i, logEntry)
+	}
+	fmt.Println("\n\n\nShutting down administrator")
 	a.cancel()
 	a.wg.Wait()
+}
+
+func (a *Administrator) setFetcherLog(id int, message string) {
+    a.fetcherMapMutex.Lock()
+    defer a.fetcherMapMutex.Unlock()
+
+    a.fetcherMap[id] = LogEntry{
+        Time:    time.Now().Format("15:04:05"),
+        Message: message,
+    }
+}
+
+func (a *Administrator) getFetcherLogs() map[int]LogEntry {
+    a.fetcherMapMutex.Lock()
+    defer a.fetcherMapMutex.Unlock()
+
+    // Return a copy if you wish to avoid exposing the original map
+    copyMap := make(map[int]LogEntry, len(a.fetcherMap))
+    for k, v := range a.fetcherMap {
+        copyMap[k] = v
+    }
+    return copyMap
 }

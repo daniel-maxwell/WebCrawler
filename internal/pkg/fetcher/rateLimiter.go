@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+    "context"
 	"time"
 	"github.com/temoto/robotstxt"
 )
@@ -26,7 +27,7 @@ var (
 
 // Checks if crawling is permitted for the given URL
 // and enforces the Crawl-delay specified in robots.txt.
-func waitForPermission(targetURL string) error {
+func waitForPermission(ctx context.Context, targetURL string) error {
     parsedURL, err := url.Parse(targetURL)
     if err != nil {
         return err
@@ -48,7 +49,7 @@ func waitForPermission(targetURL string) error {
 
     // Refresh robots.txt if needed
     if time.Since(rData.robotsFetched) > 24 * time.Hour || rData.group == nil {
-        err := fetchRobotsData(parsedURL, rData)
+        err := fetchRobotsData(ctx, parsedURL, rData)
         if err != nil {
             return err
         }
@@ -79,10 +80,10 @@ func waitForPermission(targetURL string) error {
 
 // Fetches and parses the robots.txt file for the domain.
 // It updates the RobotsData with the parsed information.
-func fetchRobotsData(parsedURL *url.URL, rData *RobotsData) error {
+func fetchRobotsData(ctx context.Context, parsedURL *url.URL, rData *RobotsData) error {
     robotsURL := parsedURL.Scheme + "://" + parsedURL.Host + "/robots.txt"
 
-    req, err := http.NewRequest("GET", robotsURL, nil)
+    req, err := http.NewRequestWithContext(ctx, "GET", robotsURL, nil)
     if err != nil {
         return err
     }
