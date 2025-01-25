@@ -1,8 +1,6 @@
-package fetcher
+package types
 
-import (
-    "time"
-)
+import "time"
 
 // Data structure to store and organize relevant information from the page
 type PageData struct {
@@ -31,4 +29,5 @@ type PageData struct {
     LoadTime        time.Duration       `json:"load_time"`
     IsSecure        bool                `json:"is_secure"`
     LastCrawled     time.Time           `json:"last_crawled"`
+    FetchError      string              `json:"fetch_error"`
 }

@@ -11,29 +11,29 @@ import (
 // Extracts the title of the HTML document.
 func extractTitle(doc *html.Node) string {
     var title string
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.ElementNode && n.Data == "title" {
-            if n.FirstChild != nil {
-                title = n.FirstChild.Data
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.ElementNode && node.Data == "title" {
+            if node.FirstChild != nil {
+                title = node.FirstChild.Data
             }
             return
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child. NextSibling {
+            dfs(child) 
         }
     }
-    f(doc)
+    dfs(doc)
     return title
 }
 
 // Extracts the meta tags of the HTML document.
 func extractMetaTags(doc *html.Node) (metaDescription, metaKeywords, robotsMeta, charset string) {
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.ElementNode && n.Data == "meta" {
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.ElementNode && node.Data == "meta" {
             var name, content, httpEquiv, metaCharset string
-            for _, attr := range n.Attr {
+            for _, attr := range node.Attr {
                 switch strings.ToLower(attr.Key) {
                 case "name":
                     name = strings.ToLower(attr.Val)
@@ -57,22 +57,22 @@ func extractMetaTags(doc *html.Node) (metaDescription, metaKeywords, robotsMeta,
                 // Parse content-type to get charset
             }
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child. NextSibling {
+            dfs(child) 
         }
     }
-    f(doc)
+    dfs(doc)
     return
 }
 
 // Extracts the canonical URL of the HTML document.
 func extractCanonicalURL(doc *html.Node) string {
     var canonicalURL string
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.ElementNode && n.Data == "link" {
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.ElementNode && node.Data == "link" {
             var rel, href string
-            for _, attr := range n.Attr {
+            for _, attr := range node.Attr {
                 switch strings.ToLower(attr.Key) {
                 case "rel":
                     rel = strings.ToLower(attr.Val)
@@ -85,70 +85,70 @@ func extractCanonicalURL(doc *html.Node) string {
                 return
             }
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child. NextSibling {
+            dfs(child) 
         }
     }
-    f(doc)
+    dfs(doc)
     return canonicalURL
 }
 
 // Extracts the headings of the HTML document.
 func extractHeadings(doc *html.Node) map[string][]string {
     headings := make(map[string][]string)
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.ElementNode {
-            switch n.Data {
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.ElementNode {
+            switch node.Data {
             case "h1", "h2", "h3", "h4", "h5", "h6":
                 var headingText string
-                if n.FirstChild != nil {
-                    headingText = ExtractNodeText(n)
+                if node.FirstChild != nil {
+                    headingText = ExtractNodeText(node)
                 }
-                headings[n.Data] = append(headings[n.Data], headingText)
+                headings[node.Data] = append(headings[node.Data], headingText)
             }
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child. NextSibling {
+            dfs(child) 
         }
     }
-    f(doc)
+    dfs(doc)
     return headings
 }
 
 // Extracts the alt texts of the images in the HTML document.
 func extractAltTexts(doc *html.Node) []string {
     var altTexts []string
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.ElementNode && n.Data == "img" {
-            for _, attr := range n.Attr {
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.ElementNode && node.Data == "img" {
+            for _, attr := range node.Attr {
                 if strings.ToLower(attr.Key) == "alt" && attr.Val != "" {
                     altTexts = append(altTexts, attr.Val)
                 }
             }
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child. NextSibling {
+            dfs(child) 
         }
     }
-    f(doc)
+    dfs(doc)
     return altTexts
 }
 
 // Extracts the anchor texts and links in the HTML document.
 func extractAnchorTextsAndLinks(doc *html.Node, baseURL string) (anchorTexts []string, internalLinks []string, externalLinks []string) {
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.ElementNode && n.Data == "a" {
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.ElementNode && node.Data == "a" {
             var href, anchorText string
-            for _, attr := range n.Attr {
+            for _, attr := range node.Attr {
                 if strings.ToLower(attr.Key) == "href" {
                     href = attr.Val
                 }
             }
-            if n.FirstChild != nil {
-                anchorText = ExtractNodeText(n)
+            if node.FirstChild != nil {
+                anchorText = ExtractNodeText(node)
             }
             if href != "" {
                 anchorTexts = append(anchorTexts, anchorText)
@@ -167,22 +167,22 @@ func extractAnchorTextsAndLinks(doc *html.Node, baseURL string) (anchorTexts []s
                 }
             }
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child. NextSibling {
+            dfs(child) 
         }
     }
-    f(doc)
+    dfs(doc)
     return
 }
 
 // Extracts the Open Graph data of the HTML document.
 func extractOpenGraphData(doc *html.Node) map[string]string {
     openGraph := make(map[string]string)
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.ElementNode && n.Data == "meta" {
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.ElementNode && node.Data == "meta" {
             var property, content string
-            for _, attr := range n.Attr {
+            for _, attr := range node.Attr {
                 switch strings.ToLower(attr.Key) {
                 case "property":
                     property = attr.Val
@@ -194,22 +194,22 @@ func extractOpenGraphData(doc *html.Node) map[string]string {
                 openGraph[property] = content
             }
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child. NextSibling {
+            dfs(child) 
         }
     }
-    f(doc)
+    dfs(doc)
     return openGraph
 }
 
 // Extracts the author of the HTML document.
 func extractAuthor(doc *html.Node) string {
     var author string
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.ElementNode && n.Data == "meta" {
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.ElementNode && node.Data == "meta" {
             var name, content string
-            for _, attr := range n.Attr {
+            for _, attr := range node.Attr {
                 switch strings.ToLower(attr.Key) {
                 case "name":
                     name = strings.ToLower(attr.Val)
@@ -222,21 +222,21 @@ func extractAuthor(doc *html.Node) string {
                 return
             }
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child. NextSibling {
+            dfs(child) 
         }
     }
-    f(doc)
+    dfs(doc)
     return author
 }
 
 // Extracts the published and modified dates of the HTML document.
 func extractDates(doc *html.Node) (datePublished, dateModified time.Time) {
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.ElementNode && n.Data == "meta" {
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.ElementNode && node.Data == "meta" {
             var property, content string
-            for _, attr := range n.Attr {
+            for _, attr := range node.Attr {
                 switch strings.ToLower(attr.Key) {
                 case "property":
                     property = attr.Val
@@ -256,58 +256,58 @@ func extractDates(doc *html.Node) (datePublished, dateModified time.Time) {
                 }
             }
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child.NextSibling {
+            dfs(child)
         }
     }
-    f(doc)
+    dfs(doc)
     return
 }
 
 // Extracts the structured data of the HTML document.
 func extractStructuredData(doc *html.Node) []string {
     var structuredData []string
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.ElementNode {
-            if n.Data == "script" {
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.ElementNode {
+            if node.Data == "script" {
                 var scriptType string
-                for _, attr := range n.Attr {
+                for _, attr := range node.Attr {
                     if strings.ToLower(attr.Key) == "type" {
                         scriptType = attr.Val
                     }
                 }
-                if scriptType == "application/ld+json" && n.FirstChild != nil {
-                    structuredData = append(structuredData, n.FirstChild.Data)
+                if scriptType == "application/ld+json" && node.FirstChild != nil {
+                    structuredData = append(structuredData, node.FirstChild.Data)
                 }
             }
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child.NextSibling {
+            dfs(child)
         }
     }
-    f(doc)
+    dfs(doc)
     return structuredData
 }
 
 // Extracts the language of the HTML document.
 func extractLanguage(doc *html.Node) string {
     var lang string
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.ElementNode && n.Data == "html" {
-            for _, attr := range n.Attr {
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.ElementNode && node.Data == "html" {
+            for _, attr := range node.Attr {
                 if strings.ToLower(attr.Key) == "lang" {
                     lang = attr.Val
                     return
                 }
             }
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child.NextSibling {
+            dfs(child)
         }
     }
-    f(doc)
+    dfs(doc)
     return lang
 }
 
@@ -319,7 +319,7 @@ func extractSocialLinks(externalLinks []string) []string {
             strings.Contains(link, "twitter.com") ||
 			strings.Contains(link, "x.com") ||
             strings.Contains(link, "instagram.com") ||
-            strings.Contains(link, "linkedin.com") {
+            strings.Contains(link, "linkedinode.com") {
             socialLinks = append(socialLinks, link)
         }
     }
@@ -327,17 +327,17 @@ func extractSocialLinks(externalLinks []string) []string {
 }
 
 // Extracts the visible text from an HTML node.
-func ExtractNodeText(n *html.Node) string {
+func ExtractNodeText(node *html.Node) string {
     var buf bytes.Buffer
-    var f func(*html.Node)
-    f = func(n *html.Node) {
-        if n.Type == html.TextNode {
-            buf.WriteString(n.Data)
+    var dfs func(*html.Node)
+    dfs = func(node *html.Node) {
+        if node.Type == html.TextNode {
+            buf.WriteString(node.Data)
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            f(c)
+        for child := node.FirstChild; child != nil; child = child.NextSibling {
+            dfs(child)
         }
     }
-    f(n)
+    dfs(node)
     return buf.String()
 }

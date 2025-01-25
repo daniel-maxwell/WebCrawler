@@ -11,7 +11,8 @@ import (
 	"sync"
 	"time"
 	//"encoding/json"
-	"webcrawler/internal/pkg/fetcher"
+	"webcrawler/internal/pkg/fetcher/fetcher"
+	workerPool "webcrawler/internal/pkg/fetcher/pool"
 	bloomfilter "webcrawler/internal/pkg/filter"
 	"webcrawler/internal/pkg/queue"
 	"webcrawler/internal/pkg/utils"
@@ -27,24 +28,18 @@ const (
 )
 
 type Administrator struct {
-	ctx           context.Context
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	urlChan       chan string
-	lineNumber    int
-	progressFile  string
-	progressMutex sync.Mutex
-	bloomFilter   *bloomfilter.BloomFilterManager
-	urlQueue      *queue.Queue
-	domainVisits  map[string]int
-	domainMutex   sync.Mutex
-	fetcherMap    map[int]LogEntry
-	fetcherMapMutex sync.Mutex
-}
-
-type LogEntry struct {
-    Time    string
-    Message string
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
+	urlChan         chan string
+	lineNumber      int
+	progressFile    string
+	progressMutex   sync.Mutex
+	bloomFilter     *bloomfilter.BloomFilterManager
+	urlQueue        *queue.Queue
+	fetcherPool     *workerPool.WorkerPool
+	domainVisits    map[string]int
+	domainMutex     sync.Mutex
 }
 
 func NewAdministrator(progressFilePath string) *Administrator {
@@ -60,6 +55,12 @@ func NewAdministrator(progressFilePath string) *Administrator {
 		panic(err)
 	}
 
+	// Initialize the new WorkerPool of size 10
+	fetcherWorkerPool, err := workerPool.NewWorkerPool(10)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create fetcher worker pool: %v", err))
+	}
+
 	// Create a new bloom filter manager - capacity will need to be increased for prod
 	filter, err := bloomfilter.NewBloomFilterManager("internal/pkg/filter/data/bloomfilter.dat", 1000, 1000000, 0.01)
 	if err != nil {
@@ -73,8 +74,8 @@ func NewAdministrator(progressFilePath string) *Administrator {
 		progressFile: progressFilePath,
 		bloomFilter:  filter,
 		urlQueue:     q,
+		fetcherPool:  fetcherWorkerPool,
 		domainVisits: make(map[string]int),
-		fetcherMap:   make(map[int]LogEntry),
 	}
 }
 
@@ -87,10 +88,10 @@ func (a *Administrator) Run() {
 		go a.readerWorker(i)
 	}
 
-	// Start Fetcher Workers
-	for i := 0; i < numFetcherWorkers; i++ {
+	// Instead of old fetcher goroutines, spawn N “queue consumer” goroutines:
+	for i := 0; i < 5; i++ { // e.g. 5 concurrency for reading from queue
 		a.wg.Add(1)
-		go a.fetcherWorker(i)
+		go a.queueConsumer(i)
 	}
 
 	// Continuous loop
@@ -177,111 +178,43 @@ func (a *Administrator) readerWorker(id int) {
 	}
 }
 
-func (a *Administrator) fetcherWorker(id int) {
-	a.setFetcherLog(id, "Fetcher Worker Started")
-	defer a.wg.Done()
-	for {
-		a.setFetcherLog(id, "Fetcher Worker Loop Started")
-		select {
-		case <-a.ctx.Done():
-			a.setFetcherLog(id, "Fetcher Worker Loop Ended Due to ctx.Done()")
-			return
-		default:
-			a.setFetcherLog(id, "Fetcher Worker Loop Default Case")
-			url, err := a.urlQueue.Remove()
-			a.fetcherMap[id] = LogEntry{Time: time.Now().Format("15:04:05"), Message: "Fetcher Worker URL Removed"}
-			if err != nil {
-				a.setFetcherLog(id, "Fetcher Worker Queue Empty, Sleeping for 500ms")
-				// Queue is empty, wait a bit before trying again
-				time.Sleep(500 * time.Millisecond)
-				continue
-			}
-			a.setFetcherLog(id, "Fetcher Worker URL Found, Fetching...")
+// queueConsumer pulls URLs from a.urlQueue, then calls the process worker
+func (a *Administrator) queueConsumer(id int) {
+    defer a.wg.Done()
 
-			ctx, cancel := context.WithTimeout(a.ctx, 30 * time.Second)
-			pageData, err := fetcher.Fetch(ctx, url) // Fetch the URL
-			cancel()
+    for {
+        select {
+        case <-a.ctx.Done():
+            return
+        default:
+        }
 
-			if err != nil {
-				a.setFetcherLog(id, "Fetcher Worker Fetch Failed Due to Error " + err.Error())
-				log.Printf("Worker %d: failed to fetch %s: %v", id, url, err)
-				continue
-			}
-			a.setFetcherLog(id, "Fetcher Worker URL Fetched Successfully, URL: " + url)
+        url, err := a.urlQueue.Remove()
+        if err != nil {
+            // queue empty, wait a bit
+            time.Sleep(500 * time.Millisecond)
+            continue
+        }
 
-			a.bloomFilter.MarkVisited(url)
-			a.setFetcherLog(id, "Fetcher Worker URL Marked Visited")
-			fmt.Printf("Worker %d: Fetched %s\n", id, url)
+        // domain checks, bloom filter checks, etc.
+        if a.bloomFilter.IsVisited(url) {
+            continue
+        }
 
-			/* // Uncomment this code to print the fetched data (JSON format)!
-			   pageDataJSONBytes, err := json.MarshalIndent(pageData, "", "  ")
-			   if err != nil {
-			       panic(err)
-			   }
-			   fmt.Println(string(pageDataJSONBytes))
-			*/
+        // Now call the worker pool
+        ctx, cancel := context.WithTimeout(a.ctx, 30 * time.Second)
+        resp, err := a.fetcherPool.FetchURL(ctx, url)
+        cancel()
+        if err != nil {
+            log.Printf("[queueConsumer %d] failed to fetch %s: %v\n", id, url, err)
+            continue
+        }
 
-			// This code tries to enqueue links found on the page in a way that
-			// avoids too many links from the same domain being contiguous in the queue.
-			totalLinksEnqueued := 0
-			internalLinksIdx := 0
-			externalLinksIdx := 0
-			a.setFetcherLog(id, "Fetcher Worker Getting Domain From URL")
-			currentDomain, domainParseErr := utils.GetDomainFromURL(url)
-			a.setFetcherLog(id, "Fetcher Worker Domain Parsed")
+		fmt.Printf("[queueConsumer %d] Worker fetched URL=%s\n", id, resp.PageData.URL)
 
-			for totalLinksEnqueued < 10 {
-				a.setFetcherLog(id, "Fetcher Worker Looping Through Links")
-
-				if internalLinksIdx >= len(pageData.InternalLinks) &&
-					externalLinksIdx >= len(pageData.ExternalLinks) {
-					break
-				}
-
-				if domainParseErr == nil && a.getDomainVisitCount(currentDomain) < domainLimit {
-
-					for internalLinksIdx < len(pageData.InternalLinks) &&
-						a.bloomFilter.IsVisited(pageData.InternalLinks[internalLinksIdx]) {
-						internalLinksIdx++
-					}
-
-					if internalLinksIdx < len(pageData.InternalLinks) {
-						err := a.urlQueue.Insert(pageData.InternalLinks[internalLinksIdx])
-						if err == nil { // Success, increment domain visit count and break out of the loop.
-							a.incrementDomainVisitCount(currentDomain)
-							totalLinksEnqueued++
-						}
-						internalLinksIdx++
-					}
-
-				} else {
-					internalLinksIdx = len(pageData.InternalLinks)
-				}
-
-				for externalLinksIdx < len(pageData.ExternalLinks) &&
-					a.bloomFilter.IsVisited(pageData.ExternalLinks[externalLinksIdx]) {
-					externalLinksIdx++
-				}
-
-				if externalLinksIdx < len(pageData.ExternalLinks) {
-					domain, err := utils.GetDomainFromURL(pageData.ExternalLinks[externalLinksIdx])
-					if err == nil && a.getDomainVisitCount(domain) < domainLimit {
-						err := a.urlQueue.Insert(pageData.ExternalLinks[externalLinksIdx])
-						if err == nil {
-							a.incrementDomainVisitCount(domain)
-							totalLinksEnqueued++
-						} else {
-							log.Printf("Worker %d: failed to insert %s: %v", id, pageData.ExternalLinks[externalLinksIdx], err)
-						}
-						
-					}
-					externalLinksIdx++
-				}
-			}
-			a.setFetcherLog(id, "Fetcher Worker Links Enqueued")
-		}
-		a.setFetcherLog(id, "Fetcher Worker Loop Ended")
-	}
+        // Optionally parse resp.Body for further links, or log it:
+        //log.Printf("[queueConsumer %d] Worker fetched URL=%s status=%d", id, resp.URL, resp.StatusCode)
+    }
 }
 
 func (a *Administrator) saveProgress() {
@@ -322,32 +255,12 @@ func (a *Administrator) updateProgress(scanner *bufio.Scanner) error {
 
 func (a *Administrator) ShutDown() {
 	fmt.Printf("Shutting down administrator. Current Crawler Status: {\nQueue Usage: %v\n, Domain Visits: %v\n, Line Number: %v\n, Bloom Filter: %v\n}\n\n\n", a.getQueueUsage(), a.domainVisits, a.lineNumber, a.bloomFilter)
-	for i, logEntry := range a.getFetcherLogs() {
-		fmt.Printf("Fetcher Worker %d: %v\n", i, logEntry)
+	fmt.Printf("Shutting down administrator...\n")
+	// ...
+	if a.fetcherPool != nil {
+		a.fetcherPool.Shutdown()
 	}
 	fmt.Println("\n\n\nShutting down administrator")
 	a.cancel()
 	a.wg.Wait()
-}
-
-func (a *Administrator) setFetcherLog(id int, message string) {
-    a.fetcherMapMutex.Lock()
-    defer a.fetcherMapMutex.Unlock()
-
-    a.fetcherMap[id] = LogEntry{
-        Time:    time.Now().Format("15:04:05"),
-        Message: message,
-    }
-}
-
-func (a *Administrator) getFetcherLogs() map[int]LogEntry {
-    a.fetcherMapMutex.Lock()
-    defer a.fetcherMapMutex.Unlock()
-
-    // Return a copy if you wish to avoid exposing the original map
-    copyMap := make(map[int]LogEntry, len(a.fetcherMap))
-    for k, v := range a.fetcherMap {
-        copyMap[k] = v
-    }
-    return copyMap
 }

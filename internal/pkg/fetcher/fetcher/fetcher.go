@@ -11,13 +11,12 @@ import (
     "net"
     "net/http"
     "strings"
-    "sync"
     "time"
     "math/rand"
     "encoding/json"
-    "github.com/chromedp/chromedp"
     "golang.org/x/net/html"
     "golang.org/x/net/html/atom"
+    "webcrawler/internal/pkg/types"
     "webcrawler/internal/pkg/utils"
 )
 
@@ -28,10 +27,8 @@ type UAData struct {
 
 var (
     // Shared Chrome instance variables
-    browserCtx    context.Context
     browserCancel context.CancelFunc
     allocCancel   context.CancelFunc
-    chromeOnce    sync.Once
     uaData        []UAData
 
     // HTTP client with custom settings
@@ -58,7 +55,7 @@ const (
 
 func Init() error {
     // Load user agents
-    jsonFile, err := os.Open("internal/pkg/fetcher/data/userAgents.json")
+    jsonFile, err := os.Open("internal/pkg/fetcher/fetcher/data/userAgents.json")
     if err != nil {
         return fmt.Errorf("failed to read user agents file: %v", err)
     }
@@ -71,76 +68,54 @@ func Init() error {
 
 // Fetch orchestrates the fetching process.
 // It tries using the HTTP client and falls back to chromedp if necessary.
-func Fetch(ctx context.Context, shortUrl string) (PageData, error) {
+func Fetch(context context.Context, shortUrl string) (types.PageData, error) {
 
     fullURL, err := utils.BuildFullUrl(shortUrl)
 
     if err != nil {
         fmt.Printf("Failed to build full URL from short URL %v: %v\n", shortUrl, err)
-        return PageData{}, fmt.Errorf("failed to build full URL from short URL %v: %v", shortUrl, err)
+        return types.PageData{}, fmt.Errorf("failed to build full URL from short URL %v: %v", shortUrl, err)
     }
 
     // Initialize PageData
-    var pageData PageData
+    var pageData types.PageData
     pageData.URL = fullURL
     pageData.IsSecure = strings.HasPrefix(fullURL, "https://")
 
     // Wait for permission from the rate limiter
-    err = waitForPermission(ctx, fullURL)
+    err = waitForPermission(context, fullURL)
     if err != nil {
         fmt.Printf("Error in rate limiter for URL %s: %v\n", fullURL, err)
         if errors.Is(err, ErrCrawlingDisallowed) {
             log.Printf("Crawling disallowed for URL: %s", fullURL)
-            return PageData{}, err
+            return types.PageData{}, err
         }
-        return PageData{}, fmt.Errorf("error in rate limiter for URL %s: %v", fullURL, err)
+        return types.PageData{}, fmt.Errorf("error in rate limiter for URL %s: %v", fullURL, err)
     }
 
     // Attempt to fetch content using HTTP client
     startTime := time.Now()
-    content, err := fetchContent(ctx, fullURL)
+    content, err := fetchContent(context, fullURL)
     pageData.LoadTime = time.Since(startTime)
     if err != nil {
         log.Printf("HTTP fetch failed for URL %s: %v", fullURL, err)
-        return PageData{}, err
+        return types.PageData{}, err
     }
 
     // Extract data from content
     pd, err := ExtractPageData(content, fullURL)
     if err != nil {
-        return PageData{}, fmt.Errorf("failed to extract page data from URL %s: %v", fullURL, err)
+        return types.PageData{}, fmt.Errorf("failed to extract page data from URL %s: %v", fullURL, err)
     }
     pageData = pd
-
-    // Check if data is sufficient
-    if IsDataSufficient(pageData) {
-        pageData.LastCrawled = time.Now()
-        return pageData, nil
-    }
-
-    // Content is insufficient; fallback to rendering with chromedp
-    startTime = time.Now()
-    renderedContent, err := fetchRenderedContent(ctx, fullURL)
-    pageData.LoadTime = time.Since(startTime)
-    if err != nil {
-        return PageData{}, fmt.Errorf("failed to fetch rendered content from URL %s: %v", fullURL, err)
-    }
-
-    // Extract data from rendered content
-    pd, err = ExtractPageData(renderedContent, fullURL)
-    if err != nil {
-        return PageData{}, fmt.Errorf("failed to extract page data from rendered content of URL %s: %v", fullURL, err)
-    }
-    pageData = pd
-    pageData.LastCrawled = time.Now()
 
     return pageData, nil
 }
 
 
 // Fetches the page content using the HTTP client.
-func fetchContent(ctx context.Context, fullURL string) (string, error) {
-    req, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
+func fetchContent(context context.Context, fullURL string) (string, error) {
+    req, err := http.NewRequestWithContext(context, "GET", fullURL, nil)
     if err != nil {
         return "", fmt.Errorf("failed to create HTTP request: %v", err)
     }
@@ -173,9 +148,9 @@ func fetchContent(ctx context.Context, fullURL string) (string, error) {
 }
 
 // Checks if the extracted PageData is sufficient.
-func IsDataSufficient(pd PageData) bool {
+func IsDataSufficient(pageData types.PageData) bool {
     return true
-    //return len(pd.VisibleText) >= 20
+    //return len(pageData.VisibleText) >= 20
 }
 
 // Tries to parse HTML, returns an error if parsing fails or takes too long.
@@ -199,33 +174,33 @@ func parseHTMLWithTimeout(content string, maxDuration time.Duration) (*html.Node
 }
 
 // Extracts data from HTML content and populates PageData.
-func ExtractPageData(content, baseURL string) (PageData, error) {
-    var pd PageData
-    pd.URL = baseURL
+func ExtractPageData(content, baseURL string) (types.PageData, error) {
+    var pageData types.PageData
+    pageData.URL = baseURL
 
     doc, err := parseHTMLWithTimeout(content, maxParseTime)
     if err != nil {
         fmt.Printf("Failed to parse HTML content for URL: [%v] | Reason: [%v]\n", baseURL, err)
-        return pd, err
+        return pageData, err
     }
 
     // Extract page data
-    pd.Title = extractTitle(doc)
-    pd.MetaDescription, pd.MetaKeywords, pd.RobotsMeta, pd.Charset = extractMetaTags(doc)
-    pd.CanonicalURL = extractCanonicalURL(doc)
-    pd.Headings = extractHeadings(doc)
-    pd.AltTexts = extractAltTexts(doc)
-    pd.AnchorTexts, pd.InternalLinks, pd.ExternalLinks = extractAnchorTextsAndLinks(doc, baseURL)
-    pd.OpenGraph = extractOpenGraphData(doc)
-    pd.Author = extractAuthor(doc)
-    pd.DatePublished, pd.DateModified = extractDates(doc)
-    pd.StructuredData = extractStructuredData(doc)
-    pd.VisibleText = ExtractVisibleText(doc)
-    pd.IsSecure = strings.HasPrefix(baseURL, "https://")
-    pd.Language = extractLanguage(doc)
-    pd.SocialLinks = extractSocialLinks(pd.ExternalLinks)
+    pageData.Title = extractTitle(doc)
+    pageData.MetaDescription, pageData.MetaKeywords, pageData.RobotsMeta, pageData.Charset = extractMetaTags(doc)
+    pageData.CanonicalURL = extractCanonicalURL(doc)
+    pageData.Headings = extractHeadings(doc)
+    pageData.AltTexts = extractAltTexts(doc)
+    pageData.AnchorTexts, pageData.InternalLinks, pageData.ExternalLinks = extractAnchorTextsAndLinks(doc, baseURL)
+    pageData.OpenGraph = extractOpenGraphData(doc)
+    pageData.Author = extractAuthor(doc)
+    pageData.DatePublished, pageData.DateModified = extractDates(doc)
+    pageData.StructuredData = extractStructuredData(doc)
+    pageData.VisibleText = ExtractVisibleText(doc)
+    pageData.IsSecure = strings.HasPrefix(baseURL, "https://")
+    pageData.Language = extractLanguage(doc)
+    pageData.SocialLinks = extractSocialLinks(pageData.ExternalLinks)
 
-    return pd, nil
+    return pageData, nil
 }
 
 // Extracts visible text from a string of HTML content
@@ -238,29 +213,29 @@ func ExtractVisibleTextFromString(content string) string {
 }
 
 // Extracts visible text from an HTML node.
-func ExtractVisibleText(n *html.Node) string {
+func ExtractVisibleText(node *html.Node) string {
     var buf bytes.Buffer
     var extract func(*html.Node)
-    extract = func(n *html.Node) {
-        if n.Type == html.TextNode && !isNonVisibleParent(n.Parent) {
-            text := strings.TrimSpace(n.Data)
+    extract = func(node *html.Node) {
+        if node.Type == html.TextNode && !isNonVisibleParent(node.Parent) {
+            text := strings.TrimSpace(node.Data)
             if len(text) > 0 {
                 buf.WriteString(text + " ")
             }
         }
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            extract(c)
+        for child := node.FirstChild; child != nil; child = child.NextSibling {
+            extract(child)
         }
     }
-    extract(n)
+    extract(node)
     return buf.String()
 }
 
 // Checks if a node or any of its ancestors are non-visible.
-func isNonVisibleParent(n *html.Node) bool {
-    for ; n != nil; n = n.Parent {
-        if n.Type == html.ElementNode {
-            switch n.DataAtom {
+func isNonVisibleParent(node *html.Node) bool {
+    for ; node != nil; node = node.Parent {
+        if node.Type == html.ElementNode {
+            switch node.DataAtom {
             case atom.Script, atom.Style, atom.Head, atom.Meta, atom.Link, atom.Noscript:
                 return true
             }
@@ -270,74 +245,11 @@ func isNonVisibleParent(n *html.Node) bool {
     return false
 }
 
-// FetchRenderedContent fetches the page content by rendering it using chromedp.
-var fetchRenderedContent = func(ctx context.Context, fullURL string) (string, error) {
-    // Initialize Chrome instance (only once per process)
-    chromeOnce.Do(initChrome)
-
-    // Create a new context for this fetch operation derived from the browser context
-    childCtx, childCancel := chromedp.NewContext(browserCtx)
-
-    // Add a timeout to the context
-    combinedCtx, combinedCancel := context.WithCancel(childCtx)
-
-    go func() {
-        select {
-        case <-ctx.Done():
-            // If the caller’s ctx is done, cancel the combined context too
-            combinedCancel()
-        case <-combinedCtx.Done():
-            // If combinedCtx is done first (normal completion), do nothing special
-        }
-    }()
-
-    defer childCancel()
-    defer combinedCancel()
-
-    // Fetch the rendered HTML content
-    var content string
-    err := chromedp.Run(
-        combinedCtx,
-        chromedp.Navigate(fullURL),
-        chromedp.WaitReady("body", chromedp.ByQuery),
-        chromedp.OuterHTML("html", &content, chromedp.ByQuery),
-    )
-    if err != nil {
-        return "", fmt.Errorf("failed to fetch rendered content from %s: %v", fullURL, err)
-    }
-
-    return content, nil
-}
-
 func getRandomUserAgent() string {
     if len(uaData) == 0 {
         log.Fatalf("No user agents loaded")
     }
     return uaData[rand.Intn(len(uaData))].UA
-}
-
-// initChrome initializes the Chrome browser instance.
-func initChrome() {
-    // Set up Chrome options
-    opts := append(chromedp.DefaultExecAllocatorOptions[:],
-        chromedp.DisableGPU,
-        chromedp.Headless,
-        chromedp.NoSandbox,
-        chromedp.Flag("blink-settings", "imagesEnabled=false"),
-        chromedp.UserAgent(getRandomUserAgent()),
-    )
-
-    // Create the Chrome ExecAllocator context
-    allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
-    allocCancel = cancelAlloc
-
-    // Create the browser context
-    browserCtx, browserCancel = chromedp.NewContext(allocCtx)
-
-    // Start the browser instance
-    if err := chromedp.Run(browserCtx); err != nil {
-        log.Fatalf("Failed to start Chrome: %v", err)
-    }
 }
 
 // Gracefully closes the browser instance and releases resources.
