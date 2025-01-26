@@ -28,9 +28,9 @@ const (
 )
 
 type Administrator struct {
-	ctx             context.Context
+	context         context.Context
 	cancel          context.CancelFunc
-	wg              sync.WaitGroup
+	waitGroup       sync.WaitGroup
 	urlChan         chan string
 	lineNumber      int
 	progressFile    string
@@ -43,7 +43,7 @@ type Administrator struct {
 }
 
 func NewAdministrator(progressFilePath string) *Administrator {
-	ctx, cancel := context.WithCancel(context.Background())
+	context, cancel := context.WithCancel(context.Background())
 
 	q, err := queue.CreateQueue(queueCapacity)
 	if err != nil {
@@ -68,7 +68,7 @@ func NewAdministrator(progressFilePath string) *Administrator {
 	}
 
 	return &Administrator{
-		ctx:          ctx,
+		context:      context,
 		cancel:       cancel,
 		urlChan:      make(chan string, 50), // TODO: Investigate buffer size requirements
 		progressFile: progressFilePath,
@@ -79,30 +79,30 @@ func NewAdministrator(progressFilePath string) *Administrator {
 	}
 }
 
-func (a *Administrator) Run() {
+func (admin *Administrator) Run() {
 	fmt.Println("Administrator Run Called")
 
 	// Start Reader Workers
 	for i := 0; i < numReaderWorkers; i++ {
-		a.wg.Add(1)
-		go a.readerWorker(i)
+		admin.waitGroup.Add(1)
+		go admin.readerWorker(i)
 	}
 
 	// Instead of old fetcher goroutines, spawn N “queue consumer” goroutines:
 	for i := 0; i < 5; i++ { // e.g. 5 concurrency for reading from queue
-		a.wg.Add(1)
-		go a.queueConsumer(i)
+		admin.waitGroup.Add(1)
+		go admin.queueConsumer(i)
 	}
 
 	// Continuous loop
 	for {
 		select {
-		case <-a.ctx.Done():
-			close(a.urlChan) // No more URLs read from file
-			a.wg.Wait()
+		case <-admin.context.Done():
+			close(admin.urlChan) // No more URLs read from file
+			admin.waitGroup.Wait()
 			return
 		default:
-			a.lineNumber = a.loadProgress()
+			admin.lineNumber = admin.loadProgress()
 
 			file, err := os.Open("internal/pkg/administrator/data/top-1m.txt")
 			if err != nil {
@@ -110,44 +110,44 @@ func (a *Administrator) Run() {
 			}
 
 			scanner := bufio.NewScanner(file)
-			if err := a.updateProgress(scanner); err != nil {
-				a.lineNumber = 0
+			if err := admin.updateProgress(scanner); err != nil {
+				admin.lineNumber = 0
 				file.Seek(0, 0)
 				scanner = bufio.NewScanner(file)
 			}
 
 			for scanner.Scan() {
 				select {
-				case <-a.ctx.Done():
+				case <-admin.context.Done():
 					file.Close()
 					return
 				default:
 					url := scanner.Text()
-					a.sleepBasedOnQueueSize()
-					a.urlChan <- url
+					admin.sleepBasedOnQueueSize()
+					admin.urlChan <- url
 				}
 			}
 			file.Close()
 
 			// Once done reading file, reset lineNumber and save progress, then restart.
-			a.lineNumber = 0
-			a.saveProgress()
+			admin.lineNumber = 0
+			admin.saveProgress()
 		}
 	}
 }
 
-func (a *Administrator) readerWorker(id int) {
-	defer a.wg.Done()
+func (admin *Administrator) readerWorker(id int) {
+	defer admin.waitGroup.Done()
 	for {
 		select {
-		case <-a.ctx.Done():
+		case <-admin.context.Done():
 			return
-		case url, ok := <-a.urlChan:
-			a.incrementLineNumber()
+		case url, ok := <-admin.urlChan:
+			admin.incrementLineNumber()
 			if !ok {
 				return // channel closed
 			}
-			if a.bloomFilter.IsVisited(url) {
+			if admin.bloomFilter.IsVisited(url) {
 				continue // URL already visited
 			}
 			retryTime := 1.3
@@ -156,10 +156,10 @@ func (a *Administrator) readerWorker(id int) {
 				if retryTime > 10 {
 					break
 				}
-				err := a.urlQueue.Insert(url)
+				err := admin.urlQueue.Insert(url)
 				if err == nil { // Successfully inserted
 					if domain, err := utils.GetDomainFromURL(url); err == nil {
-						a.incrementDomainVisitCount(domain)
+						admin.incrementDomainVisitCount(domain)
 					}
 					break
 				} else {
@@ -168,7 +168,7 @@ func (a *Administrator) readerWorker(id int) {
 					time.Sleep(time.Duration(retryTime) * time.Second)
 					retryTime *= retryTime // Exponential backoff
 					select {
-					case <-a.ctx.Done():
+					case <-admin.context.Done():
 						return
 					default:
 					}
@@ -178,32 +178,32 @@ func (a *Administrator) readerWorker(id int) {
 	}
 }
 
-// queueConsumer pulls URLs from a.urlQueue, then calls the process worker
-func (a *Administrator) queueConsumer(id int) {
-    defer a.wg.Done()
+// Pulls URLs from admin.urlQueue, then calls the process worker
+func (admin *Administrator) queueConsumer(id int) {
+    defer admin.waitGroup.Done()
 
     for {
         select {
-        case <-a.ctx.Done():
+        case <-admin.context.Done():
             return
         default:
         }
 
-        url, err := a.urlQueue.Remove()
-        if err != nil {
-            // queue empty, wait a bit
+        url, err := admin.urlQueue.Remove()
+        if err != nil { // queue empty, wait a bit
             time.Sleep(500 * time.Millisecond)
             continue
         }
 
-        // domain checks, bloom filter checks, etc.
-        if a.bloomFilter.IsVisited(url) {
+        if admin.bloomFilter.IsVisited(url) {
             continue
-        }
+        } else {
+			admin.bloomFilter.MarkVisited(url)
+		}
 
         // Now call the worker pool
-        ctx, cancel := context.WithTimeout(a.ctx, 30 * time.Second)
-        resp, err := a.fetcherPool.FetchURL(ctx, url)
+        context, cancel := context.WithTimeout(admin.context, 30 * time.Second)
+        resp, err := admin.fetcherPool.FetchURL(context, url)
         cancel()
         if err != nil {
             log.Printf("[queueConsumer %d] failed to fetch %s: %v\n", id, url, err)
@@ -212,23 +212,22 @@ func (a *Administrator) queueConsumer(id int) {
 
 		fmt.Printf("[queueConsumer %d] Worker fetched URL=%s\n", id, resp.PageData.URL)
 
-        // Optionally parse resp.Body for further links, or log it:
         //log.Printf("[queueConsumer %d] Worker fetched URL=%s status=%d", id, resp.URL, resp.StatusCode)
     }
 }
 
-func (a *Administrator) saveProgress() {
-	a.progressMutex.Lock()
-	defer a.progressMutex.Unlock()
-	data := []byte(fmt.Sprintf("%d\n", a.lineNumber))
-	err := os.WriteFile(a.progressFile, data, 0644)
+func (admin *Administrator) saveProgress() {
+	admin.progressMutex.Lock()
+	defer admin.progressMutex.Unlock()
+	data := []byte(fmt.Sprintf("%d\n", admin.lineNumber))
+	err := os.WriteFile(admin.progressFile, data, 0644)
 	if err != nil {
 		log.Printf("Error saving progress: %v", err)
 	}
 }
 
-func (a *Administrator) loadProgress() int {
-	data, err := os.ReadFile(a.progressFile)
+func (admin *Administrator) loadProgress() int {
+	data, err := os.ReadFile(admin.progressFile)
 	if err != nil {
 		return 0
 	}
@@ -239,28 +238,27 @@ func (a *Administrator) loadProgress() int {
 	return lineNum
 }
 
-func (a *Administrator) updateProgress(scanner *bufio.Scanner) error {
+func (admin *Administrator) updateProgress(scanner *bufio.Scanner) error {
 	currentLine := 0
-	for currentLine < a.lineNumber {
+	for currentLine < admin.lineNumber {
 		if !scanner.Scan() {
 			if err := scanner.Err(); err != nil {
 				return fmt.Errorf("error while skipping lines: %v", err)
 			}
-			return fmt.Errorf("reached EOF after skipping %d lines, expected to skip %d", currentLine, a.lineNumber)
+			return fmt.Errorf("reached EOF after skipping %d lines, expected to skip %d", currentLine, admin.lineNumber)
 		}
 		currentLine++
 	}
 	return nil
 }
 
-func (a *Administrator) ShutDown() {
-	fmt.Printf("Shutting down administrator. Current Crawler Status: {\nQueue Usage: %v\n, Domain Visits: %v\n, Line Number: %v\n, Bloom Filter: %v\n}\n\n\n", a.getQueueUsage(), a.domainVisits, a.lineNumber, a.bloomFilter)
+func (admin *Administrator) ShutDown() {
+	fmt.Printf("Shutting down administrator. Current Crawler Status: {\nQueue Usage: %v\n, Domain Visits: %v\n, Line Number: %v\n, Bloom Filter: %v\n}\n\n\n", admin.getQueueUsage(), admin.domainVisits, admin.lineNumber, admin.bloomFilter)
 	fmt.Printf("Shutting down administrator...\n")
-	// ...
-	if a.fetcherPool != nil {
-		a.fetcherPool.Shutdown()
+	if admin.fetcherPool != nil {
+		admin.fetcherPool.Shutdown()
 	}
 	fmt.Println("\n\n\nShutting down administrator")
-	a.cancel()
-	a.wg.Wait()
+	admin.cancel()
+	admin.waitGroup.Wait()
 }

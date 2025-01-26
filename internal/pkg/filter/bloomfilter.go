@@ -12,7 +12,7 @@ import (
 // This is a wrapper around a Bloom filter that provides thread-safe access to it.
 type BloomFilterManager struct {
 	filter      *bloom.BloomFilter
-	mu          sync.Mutex
+	mutex       sync.Mutex
 	savePath    string
 	saveEvery   int
 	saveCounter int
@@ -63,18 +63,18 @@ func loadBloomFilter(path string) (*bloom.BloomFilter, error) {
 }
 
 // Save persists the Bloom filter to disk.
-func (bfm *BloomFilterManager) Save() error {
-    bfm.mu.Lock()
-    defer bfm.mu.Unlock()
+func (filterManager *BloomFilterManager) Save() error {
+    filterManager.mutex.Lock()
+    defer filterManager.mutex.Unlock()
 
-    file, err := os.Create(bfm.savePath)
+    file, err := os.Create(filterManager.savePath)
     if err != nil {
         return err
     }
     defer file.Close()
 
     writer := bufio.NewWriter(file)
-    _, err = bfm.filter.WriteTo(writer)
+    _, err = filterManager.filter.WriteTo(writer)
     if err != nil {
         return err
     }
@@ -82,30 +82,27 @@ func (bfm *BloomFilterManager) Save() error {
 }
 
 // Checks if a URL has been visited.
-func (bfm *BloomFilterManager) IsVisited(url string) bool {
-	bfm.mu.Lock()
-	defer bfm.mu.Unlock()
-	return bfm.filter.Test([]byte(url))
+func (filterManager *BloomFilterManager) IsVisited(url string) bool {
+	filterManager.mutex.Lock()
+	defer filterManager.mutex.Unlock()
+	return filterManager.filter.Test([]byte(url))
 }
 
 // Marks a URL as visited and triggers periodic saving.
-func (bfm *BloomFilterManager) MarkVisited(url string) {
-    bfm.mu.Lock()
-    bfm.filter.Add([]byte(url))
-    bfm.saveCounter++
+func (filterManager *BloomFilterManager) MarkVisited(url string) {
+    filterManager.mutex.Lock()
+    filterManager.filter.Add([]byte(url))
+    filterManager.saveCounter++
 
-    // Only save if we've hit the threshold
-    // but do so *after* unlocking
-    shouldSave := (bfm.saveCounter >= bfm.saveEvery)
-    if shouldSave {
-        // Reset before unlock, so we don't double-save
-        bfm.saveCounter = 0
+    // Only save if we've hit the threshold, but do so *after* unlocking
+    shouldSave := (filterManager.saveCounter >= filterManager.saveEvery)
+    if shouldSave { // Reset before unlock, so we don't double-save
+        filterManager.saveCounter = 0
     }
-    bfm.mu.Unlock()
+    filterManager.mutex.Unlock()
 
     if shouldSave {
-        // Now call Save() without holding bfm.mu
-        if err := bfm.Save(); err != nil {
+        if err := filterManager.Save(); err != nil {
             log.Printf("Error saving Bloom filter: %v", err)
         }
     }

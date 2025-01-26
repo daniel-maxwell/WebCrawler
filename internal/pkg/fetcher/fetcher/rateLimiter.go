@@ -15,7 +15,7 @@ type RobotsData struct {
     crawlDelay    time.Duration
     lastAccess    time.Time
     robotsFetched time.Time
-    mu            sync.Mutex
+    mutex         sync.Mutex
 }
 
 var (
@@ -44,8 +44,8 @@ func waitForPermission(context context.Context, targetURL string) error {
     rData.crawlDelay = min(rData.crawlDelay, 5 * time.Second) // Cap crawl delay at 5 seconds
     robotsCacheMutex.Unlock()
 
-    rData.mu.Lock()
-    defer rData.mu.Unlock()
+    rData.mutex.Lock()
+    defer rData.mutex.Unlock()
 
     // Refresh robots.txt if needed
     if time.Since(rData.robotsFetched) > 24 * time.Hour || rData.group == nil {

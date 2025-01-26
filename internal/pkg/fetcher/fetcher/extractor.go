@@ -328,16 +328,16 @@ func extractSocialLinks(externalLinks []string) []string {
 
 // Extracts the visible text from an HTML node.
 func ExtractNodeText(node *html.Node) string {
-    var buf bytes.Buffer
+    var buffer bytes.Buffer
     var dfs func(*html.Node)
     dfs = func(node *html.Node) {
         if node.Type == html.TextNode {
-            buf.WriteString(node.Data)
+            buffer.WriteString(node.Data)
         }
         for child := node.FirstChild; child != nil; child = child.NextSibling {
             dfs(child)
         }
     }
     dfs(node)
-    return buf.String()
+    return buffer.String()
 }

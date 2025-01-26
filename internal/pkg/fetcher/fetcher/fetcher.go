@@ -20,16 +20,15 @@ import (
     "webcrawler/internal/pkg/utils"
 )
 
-type UAData struct {
-    UA  string  `json:"ua"`
-    Pct float64 `json:"pct"`
+type UserAgentData struct {
+    UserAgent  string  `json:"ua"`
 }
 
 var (
     // Shared Chrome instance variables
     browserCancel context.CancelFunc
     allocCancel   context.CancelFunc
-    uaData        []UAData
+    userAgentData        []UserAgentData
 
     // HTTP client with custom settings
     httpClient = &http.Client{
@@ -60,7 +59,7 @@ func Init() error {
         return fmt.Errorf("failed to read user agents file: %v", err)
     }
     defer jsonFile.Close()
-    if err := json.NewDecoder(jsonFile).Decode(&uaData); err != nil {
+    if err := json.NewDecoder(jsonFile).Decode(&userAgentData); err != nil {
         return fmt.Errorf("error decoding user agents JSON: %v", err)
     }
     return nil
@@ -246,10 +245,10 @@ func isNonVisibleParent(node *html.Node) bool {
 }
 
 func getRandomUserAgent() string {
-    if len(uaData) == 0 {
+    if len(userAgentData) == 0 {
         log.Fatalf("No user agents loaded")
     }
-    return uaData[rand.Intn(len(uaData))].UA
+    return userAgentData[rand.Intn(len(userAgentData))].UserAgent
 }
 
 // Gracefully closes the browser instance and releases resources.
