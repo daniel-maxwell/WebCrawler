@@ -203,16 +203,17 @@ func (admin *Administrator) queueConsumer(id int) {
 
         // Now call the worker pool
         context, cancel := context.WithTimeout(admin.context, 30 * time.Second)
-        resp, err := admin.fetcherPool.FetchURL(context, url)
+        response, err := admin.fetcherPool.FetchURL(context, url)
         cancel()
         if err != nil {
             log.Printf("[queueConsumer %d] failed to fetch %s: %v\n", id, url, err)
             continue
         }
 
-		fmt.Printf("[queueConsumer %d] Worker fetched URL=%s\n", id, resp.PageData.URL)
+		fmt.Printf("queueConsumer Worker %d fetched URL: [%s] | Title: [%s]\n", id, response.PageData.URL, response.PageData.Title)
+		
+		admin.enqueueExtractedURLs(url, response.PageData.InternalLinks, response.PageData.ExternalLinks)
 
-        //log.Printf("[queueConsumer %d] Worker fetched URL=%s status=%d", id, resp.URL, resp.StatusCode)
     }
 }
 

@@ -3,46 +3,103 @@ package administrator
 import (
 	"math"
 	"time"
+    "webcrawler/internal/pkg/utils"
 )
 
 // Increments websites file line number
-func (a *Administrator) incrementLineNumber() {
-    a.progressMutex.Lock()
-    a.lineNumber++
-    currentLineNumber := a.lineNumber
-    a.progressMutex.Unlock()
+func (admin *Administrator) incrementLineNumber() {
+    admin.progressMutex.Lock()
+    admin.lineNumber++
+    currentLineNumber := admin.lineNumber
+    admin.progressMutex.Unlock()
     if (currentLineNumber % 100) == 0 {
-        a.saveProgress()
+        admin.saveProgress()
     }
 }
 
 // Increments the counter for the number of times a domain has been visited
-func (a *Administrator) incrementDomainVisitCount(domain string) {
-    a.domainMutex.Lock()
-    a.domainVisits[domain]++
-    a.domainMutex.Unlock()
+func (admin *Administrator) incrementDomainVisitCount(domain string) {
+    admin.domainMutex.Lock()
+    admin.domainVisits[domain]++
+    admin.domainMutex.Unlock()
 }
 
 // Gets the number of times a domain has been visited
-func (a *Administrator) getDomainVisitCount(domain string) int {
-    a.domainMutex.Lock()
-    defer a.domainMutex.Unlock()
-    return a.domainVisits[domain]
+func (admin *Administrator) getDomainVisitCount(domain string) int {
+    admin.domainMutex.Lock()
+    defer admin.domainMutex.Unlock()
+    return admin.domainVisits[domain]
 }
 
 // Gets a decimal representation of how full the queue is from 0 to 1
-func (a *Administrator) getQueueUsage() float64 {
-    return float64(a.urlQueue.Length()) / float64(queueCapacity)
+func (admin *Administrator) getQueueUsage() float64 {
+    return float64(admin.urlQueue.Length()) / float64(queueCapacity)
 }
 
 // Puts the administrator to sleep for a duration based on queue utilization
-func (a *Administrator) sleepBasedOnQueueSize() {
-    usage := a.getQueueUsage()
+func (admin *Administrator) sleepBasedOnQueueSize() {
+    usage := admin.getQueueUsage()
     sleepMs := math.Min(
         float64(maxSleepMs),
         math.Max(usage * float64(maxSleepMs), 0),
     )
     if sleepMs > 0 {
         time.Sleep(time.Duration(sleepMs) * time.Millisecond)
+    }
+}
+
+func (admin *Administrator) enqueueExtractedURLs(sourceURL    string, 
+                                                 internalURLs []string,
+                                                 externalURLs []string) {
+    // This code tries to enqueue links found on the page in a way that
+    // avoids too many links from the same domain being contiguous in the queue.
+    totalLinksEnqueued, internalIdx, externalIdx := 0, 0, 0
+
+    currentDomain, domainParseErr := utils.GetDomainFromURL(sourceURL)
+
+    doEnqueueInternalURLs := domainParseErr == nil
+
+    for totalLinksEnqueued < 10 {
+
+        if internalIdx >= len(internalURLs) && externalIdx >= len(externalURLs) {
+            break
+        }
+
+        if doEnqueueInternalURLs && admin.getDomainVisitCount(currentDomain) < domainLimit {
+
+            for internalIdx < len(internalURLs) &&
+                admin.bloomFilter.IsVisited(internalURLs[internalIdx]) {
+                internalIdx++
+            }
+
+            if internalIdx < len(internalURLs) {
+                err := admin.urlQueue.Insert(internalURLs[internalIdx])
+                if err == nil { // Success, increment domain visit count and break out of the loop.
+                    admin.incrementDomainVisitCount(currentDomain)
+                    totalLinksEnqueued++
+                }
+                internalIdx++
+            }
+
+        } else {
+            internalIdx = len(internalURLs)
+        }
+
+        for externalIdx < len(externalURLs) &&
+            admin.bloomFilter.IsVisited(externalURLs[externalIdx]) {
+            externalIdx++
+        }
+
+        if externalIdx < len(externalURLs) {
+            domain, err := utils.GetDomainFromURL(externalURLs[externalIdx])
+            if err == nil && admin.getDomainVisitCount(domain) < domainLimit {
+                err := admin.urlQueue.Insert(externalURLs[externalIdx])
+                if err == nil {
+                    admin.incrementDomainVisitCount(domain)
+                    totalLinksEnqueued++
+                }
+            }
+            externalIdx++
+        }
     }
 }

@@ -1,6 +1,7 @@
 package worker_pool
 
 import (
+    "os"
     "encoding/gob"
     "context"
     "fmt"
@@ -68,7 +69,7 @@ func NewWorkerPool(size int) (*WorkerPool, error) {
     return workerPool, nil
 }
 
-// FetchURL sends a URL to an idle worker, waits up to ctx deadline.
+// Sends a URL to an idle worker, waits up to the context deadline
 func (workerPool *WorkerPool) FetchURL(context context.Context, url string) (WorkerResponse, error) {
     response := WorkerResponse{}
 
@@ -87,7 +88,7 @@ func (workerPool *WorkerPool) FetchURL(context context.Context, url string) (Wor
         return response, fmt.Errorf("no worker available before timeout: %w", context.Err())
     }
 
-    // We add to wait group so we can wait if needed on shutdown
+    // Add to wait group so we can wait if needed on shutdown
     workerPool.waitGroup.Add(1)
     defer workerPool.waitGroup.Done()
 
@@ -96,9 +97,10 @@ func (workerPool *WorkerPool) FetchURL(context context.Context, url string) (Wor
         RequestID: fmt.Sprintf("req-%d", rand.Int63()),
         URL:       url,
     }
-    r, err := sendRequest(context, worker, request)
+    response, err := sendRequest(context, worker, request)
     if err != nil {
         // kill this worker and try to spawn a new one
+        log.Printf("Killing worker %d due to error: %v", worker.id, err)
         killWorker(worker)
         newWorker, spawnErr := startWorker(worker.id)
         if spawnErr == nil {
@@ -111,7 +113,7 @@ func (workerPool *WorkerPool) FetchURL(context context.Context, url string) (Wor
 
     // success => put worker back
     workerPool.workerChannel <- worker
-    return r, nil
+    return response, nil
 }
 
 // Kills all child processes and waits for in-flight requests to end.
@@ -144,6 +146,8 @@ func startWorker(id int) (*Worker, error) {
     if err := cmd.Start(); err != nil {
         return nil, err
     }
+
+    cmd.Stderr = os.Stderr
 
     worker := &Worker{
         id:     id,
