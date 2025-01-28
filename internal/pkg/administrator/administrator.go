@@ -206,14 +206,14 @@ func (admin *Administrator) queueConsumer(id int) {
         response, err := admin.fetcherPool.FetchURL(context, url)
         cancel()
         if err != nil {
-            log.Printf("[queueConsumer %d] failed to fetch %s: %v\n", id, url, err)
+            log.Printf("[queueConsumer %d] error in call to fetchURL %s: %v\n", id, url, err)
             continue
-        }
-
-		fmt.Printf("queueConsumer Worker %d fetched URL: [%s] | Title: [%s]\n", id, response.PageData.URL, response.PageData.Title)
-		
-		admin.enqueueExtractedURLs(url, response.PageData.InternalLinks, response.PageData.ExternalLinks)
-
+        } else {
+			if response.FetchError == "" {
+				fmt.Printf("queueConsumer Worker %d fetched URL: [%s] | Title: [%s] | Lang [%s] \n", id, response.PageData.URL, response.PageData.Title, response.PageData.Language)
+				admin.enqueueExtractedURLs(url, response.PageData.InternalLinks, response.PageData.ExternalLinks)
+			}
+		}
     }
 }
 

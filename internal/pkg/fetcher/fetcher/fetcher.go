@@ -15,7 +15,6 @@ import (
 	"time"
 	"webcrawler/internal/pkg/types"
 	"webcrawler/internal/pkg/utils"
-
 	"golang.org/x/net/html"
 )
 
@@ -78,7 +77,6 @@ func Fetch(context context.Context, shortUrl string) (types.PageData, error) {
 	// Initialize PageData
 	var pageData types.PageData
 	pageData.URL = fullURL
-	pageData.IsSecure = strings.HasPrefix(fullURL, "https://")
 
 	// Wait for permission from the rate limiter
 	err = waitForPermission(context, fullURL)
@@ -88,7 +86,7 @@ func Fetch(context context.Context, shortUrl string) (types.PageData, error) {
 			log.Printf("Crawling disallowed for URL: %s", fullURL)
 			return types.PageData{}, err
 		}
-		return types.PageData{}, fmt.Errorf("error in rate limiter for URL %s: %v", fullURL, err)
+		return types.PageData{}, fmt.Errorf("error in rate limiter for URL [%s] Cause: [%v]", fullURL, err)
 	}
 
 	// Attempt to fetch content using HTTP client
@@ -96,14 +94,14 @@ func Fetch(context context.Context, shortUrl string) (types.PageData, error) {
 	content, err := fetchContent(context, fullURL)
 	pageData.LoadTime = time.Since(startTime)
 	if err != nil {
-		log.Printf("HTTP fetch failed for URL %s: %v", fullURL, err)
+		log.Printf("HTTP fetch failed for URL [%s] Cause: [%v]", fullURL, err)
 		return types.PageData{}, err
 	}
 
 	// Extract data from content
 	pd, err := extractPageData(content, fullURL)
 	if err != nil {
-		return types.PageData{}, fmt.Errorf("failed to extract page data from URL %s: %v", fullURL, err)
+		return types.PageData{}, errors.New(err.Error())
 	}
 	pageData = pd
 
