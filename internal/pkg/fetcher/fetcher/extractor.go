@@ -97,12 +97,13 @@ func isEnglishContent(doc *html.Node) bool {
 	return true
 }
 
-func findHTMLNode(n *html.Node) *html.Node {
-	if n.Type == html.ElementNode && n.Data == "html" {
-		return n
+// Finds the root <html> node in the document
+func findHTMLNode(node *html.Node) *html.Node {
+	if node.Type == html.ElementNode && node.Data == "html" {
+		return node
 	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		if found := findHTMLNode(c); found != nil {
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if found := findHTMLNode(child); found != nil {
 			return found
 		}
 	}
@@ -110,9 +111,9 @@ func findHTMLNode(n *html.Node) *html.Node {
 }
 
 // Retrieves an attribute value case-insensitively with zero allocations
-func getAttribute(n *html.Node, attrName string) string {
+func getAttribute(node *html.Node, attrName string) string {
     attrName = strings.ToLower(attrName)
-    for _, attr := range n.Attr {
+    for _, attr := range node.Attr {
         if strings.EqualFold(attr.Key, attrName) {
             return attr.Val
         }
@@ -120,7 +121,8 @@ func getAttribute(n *html.Node, attrName string) string {
     return ""
 }
 
-func handleTextNode(node *html.Node, buf *bytes.Buffer) {
+// Handles text nodes by appending to a string buffer
+func handleTextNode(node *html.Node, buffer *bytes.Buffer) {
 	parent := node.Parent
 	if parent == nil {
 		return
@@ -131,58 +133,61 @@ func handleTextNode(node *html.Node, buf *bytes.Buffer) {
 		return
 	}
 
-	buf.WriteString(node.Data)
+	buffer.WriteString(node.Data)
 }
 
-func handleElement(node *html.Node, pd *types.PageData, base *url.URL, 
+// Handles element nodes by delegating to specific handlers
+func handleElement(node *html.Node, pageData *types.PageData, base *url.URL, 
     internalLinks *[]string, externalLinks *[]string) error {
     switch node.Data {
-		case "html":  // Added case for html element
-			handleHtmlTag(node, pd)
+		case "html":
+			handleHtmlTag(node, pageData)
 		case "title":
-			if err := handleTitle(node, pd); err != nil {
+			if err := handleTitle(node, pageData); err != nil {
 				return err // Propagate error upward
 			}
 		case "meta":
-			parseMetaTags(node, pd)
+			parseMetaTags(node, pageData)
 		case "a":
-			processAnchor(node, pd, base, internalLinks, externalLinks)
+			processAnchor(node, pageData, base, internalLinks, externalLinks)
 		case "img":
-			parseImage(node, pd)
+			parseImage(node, pageData)
 		case "h1", "h2", "h3", "h4", "h5", "h6":
-			storeHeading(node, pd)
+			storeHeading(node, pageData)
 		case "link":
-			parseLink(node, pd, base)
+			parseLink(node, pageData, base)
 		case "script":
-			parseScript(node, pd)
+			parseScript(node, pageData)
 	}
 	return nil
 }
 
-func handleHtmlTag(node *html.Node, pd *types.PageData) {
+// Handles the <html> tag to extract the language attribute
+func handleHtmlTag(node *html.Node, pageData *types.PageData) {
     for _, attr := range node.Attr {
         if strings.EqualFold(attr.Key, "lang") {
-            pd.Language = strings.TrimSpace(attr.Val)
+            pageData.Language = strings.TrimSpace(attr.Val)
             return
         }
     }
     // Default if no lang attribute
-    pd.Language = "unspecified"
+    pageData.Language = "unspecified"
 }
 
-func handleTitle(node *html.Node, pd *types.PageData) error {
-    pd.Title = extractNodeText(node)
-    if pd.Title == "" {
+// Handles the <title> tag to extract the page title and check for filtered terms
+func handleTitle(node *html.Node, pageData *types.PageData) error {
+    pageData.Title = extractNodeText(node)
+    if pageData.Title == "" {
         return nil
     }
-    if err := checkTitleFilter(pd.Title); err != nil {
+    if err := checkTitleFilter(pageData.Title); err != nil {
         return fmt.Errorf("title contians filtered terms: %w", err)
     }
     return nil
 }
 
-
-func parseMetaTags(node *html.Node, pd *types.PageData) {
+// Parses meta tags for various types of metadata
+func parseMetaTags(node *html.Node, pageData *types.PageData) {
 	var (
 		name, content, charset, property string
 		httpEquiv                        string
@@ -190,63 +195,65 @@ func parseMetaTags(node *html.Node, pd *types.PageData) {
 
 	for _, attr := range node.Attr {
 		switch strings.ToLower(attr.Key) {
-		case "name":
-			name = attr.Val
-		case "content":
-			content = attr.Val
-		case "charset":
-			charset = attr.Val
-		case "property":
-			property = attr.Val
-		case "http-equiv":
-			httpEquiv = strings.ToLower(attr.Val)
-		}
+			case "name":
+				name = attr.Val
+			case "content":
+				content = attr.Val
+			case "charset":
+				charset = attr.Val
+			case "property":
+				property = attr.Val
+			case "http-equiv":
+				httpEquiv = strings.ToLower(attr.Val)
+			}
 	}
 
 	switch {
-	case charset != "":
-		pd.Charset = charset
-	case httpEquiv == "content-type":
-		if parts := strings.SplitN(content, "charset=", 2); len(parts) > 1 {
-			pd.Charset = strings.TrimSpace(parts[1])
-		}
-	case strings.HasPrefix(property, "og:"):
-		if pd.OpenGraph == nil {
-			pd.OpenGraph = make(map[string]string)
-		}
-		pd.OpenGraph[property] = content
-	case name == "description":
-		pd.MetaDescription = content
-	case name == "robots":
-		pd.RobotsMeta = content
+		case charset != "":
+			pageData.Charset = charset
+		case httpEquiv == "content-type":
+			if parts := strings.SplitN(content, "charset=", 2); len(parts) > 1 {
+				pageData.Charset = strings.TrimSpace(parts[1])
+			}
+		case strings.HasPrefix(property, "og:"):
+			if pageData.OpenGraph == nil {
+				pageData.OpenGraph = make(map[string]string)
+			}
+			pageData.OpenGraph[property] = content
+		case name == "description":
+			pageData.MetaDescription = content
+		case name == "robots":
+			pageData.RobotsMeta = content
 	}
 
-	parseTimestamps(property, content, pd)
+	parseTimestamps(property, content, pageData)
 }
 
-func parseTimestamps(property, content string, pd *types.PageData) {
+// Parses timestamps from meta tags
+func parseTimestamps(property, content string, pageData *types.PageData) {
 	if content == "" {
 		return
 	}
 
-	var t time.Time
+	var parsedTime time.Time
 	var err error
 	
 	switch property {
 	case "article:published_time", "datepublished":
-		t, err = time.Parse(time.RFC3339, content)
+		parsedTime, err = time.Parse(time.RFC3339, content)
 		if err == nil {
-			pd.DatePublished = t
+			pageData.DatePublished = parsedTime
 		}
 	case "article:modified_time", "datemodified":
-		t, err = time.Parse(time.RFC3339, content)
+		parsedTime, err = time.Parse(time.RFC3339, content)
 		if err == nil {
-			pd.DateModified = t
+			pageData.DateModified = parsedTime
 		}
 	}
 }
 
-func processAnchor(node *html.Node, pd *types.PageData, base *url.URL,
+// Processes anchor tags to extract URLs and anchor text
+func processAnchor(node *html.Node, pageData *types.PageData, base *url.URL,
 	internalLinks *[]string, externalLinks *[]string) {
 
 	href := getAttribute(node, "href")
@@ -266,7 +273,7 @@ func processAnchor(node *html.Node, pd *types.PageData, base *url.URL,
 
 	anchorText := extractNodeText(node)
 	if anchorText != "" {
-		pd.AnchorTexts = append(pd.AnchorTexts, anchorText)
+		pageData.AnchorTexts = append(pageData.AnchorTexts, anchorText)
 	}
 
 	if resolved.Host == base.Host {
@@ -276,40 +283,29 @@ func processAnchor(node *html.Node, pd *types.PageData, base *url.URL,
 	}
 }
 
-func isValidScheme(u *url.URL) bool {
-	return u.Scheme == "http" || u.Scheme == "https"
+// Verifies that the URL scheme is either HTTP or HTTPS
+func isValidScheme(url *url.URL) bool {
+	return url.Scheme == "http" || url.Scheme == "https"
 }
 
+// Filters out non-social external links
 func filterSocialLinks(links []string) []string {
 	social := make([]string, 0, 5)
 	for _, link := range links {
-		u, err := url.Parse(link)
+		parsedURL, err := url.Parse(link)
 		if err != nil {
 			continue
 		}
-		if _, exists := socialDomains[u.Hostname()]; exists {
+		if _, exists := socialDomains[parsedURL.Hostname()]; exists {
 			social = append(social, link)
 		}
 	}
 	return social
 }
 
-func normalizeText(text string) string {
-	scanner := bufio.NewScanner(strings.NewReader(text))
-	var builder strings.Builder
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			builder.WriteString(line)
-			builder.WriteByte(' ')
-		}
-	}
 
-	return strings.Join(strings.Fields(builder.String()), " ")
-}
-
-// extractNodeText collects text from all text nodes in the subtree (iterative version)
+// Collects text from all text nodes in the subtree (iterative version)
 func extractNodeText(node *html.Node) string {
 	var builder strings.Builder
 	stack := make([]*html.Node, 0, 32)
@@ -347,27 +343,27 @@ func checkTitleFilter(title string) error {
 }
 
 // Extracts alt attributes from img elements
-func parseImage(node *html.Node, pd *types.PageData) {
+func parseImage(node *html.Node, pageData *types.PageData) {
 	for _, attr := range node.Attr {
 		if strings.EqualFold(attr.Key, "alt") && attr.Val != "" {
-			pd.AltTexts = append(pd.AltTexts, attr.Val)
+			pageData.AltTexts = append(pageData.AltTexts, attr.Val)
 		}
 	}
 }
 
 // Captures heading text by level
-func storeHeading(node *html.Node, pd *types.PageData) {
-	if pd.Headings == nil {
-		pd.Headings = make(map[string][]string, 6)
+func storeHeading(node *html.Node, pageData *types.PageData) {
+	if pageData.Headings == nil {
+		pageData.Headings = make(map[string][]string, 6)
 	}
 	
 	text := extractNodeText(node)
 	tag := strings.ToLower(node.Data)
-	pd.Headings[tag] = append(pd.Headings[tag], text)
+	pageData.Headings[tag] = append(pageData.Headings[tag], text)
 }
 
-// parseLink handles canonical link discovery
-func parseLink(node *html.Node, pd *types.PageData, base *url.URL) {
+// Handles canonical link discovery
+func parseLink(node *html.Node, pageData *types.PageData, base *url.URL) {
 	var href, rel string
 	for _, attr := range node.Attr {
 		switch strings.ToLower(attr.Key) {
@@ -383,12 +379,12 @@ func parseLink(node *html.Node, pd *types.PageData, base *url.URL) {
 	}
 
 	if parsed, err := url.Parse(href); err == nil {
-		pd.CanonicalURL = base.ResolveReference(parsed).String()
+		pageData.CanonicalURL = base.ResolveReference(parsed).String()
 	}
 }
 
-// parseScript extracts JSON-LD content
-func parseScript(node *html.Node, pd *types.PageData) {
+// Extracts JSON-LD content
+func parseScript(node *html.Node, pageData *types.PageData) {
 	var scriptType string
 	var content strings.Builder
 
@@ -410,7 +406,7 @@ func parseScript(node *html.Node, pd *types.PageData) {
 	}
 
 	if content.Len() > 0 {
-		pd.StructuredData = append(pd.StructuredData, content.String())
+		pageData.StructuredData = append(pageData.StructuredData, content.String())
 	}
 }
 
@@ -420,14 +416,14 @@ func findBaseTag(doc *html.Node) *url.URL {
 	stack = append(stack, doc)
 	
 	for len(stack) > 0 {
-		current := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
+		current := stack[len(stack) - 1]
+		stack = stack[:len(stack) - 1]
 
 		if current.Type == html.ElementNode && current.Data == "base" {
 			for _, attr := range current.Attr {
 				if strings.EqualFold(attr.Key, "href") {
-					if u, err := url.Parse(attr.Val); err == nil {
-						return u
+					if parsedURL, err := url.Parse(attr.Val); err == nil {
+						return parsedURL
 					}
 				}
 			}
@@ -450,3 +446,16 @@ func findBaseTag(doc *html.Node) *url.URL {
 	return nil
 }
 
+// Normalizes text by removing extra whitespace and newlines
+func normalizeText(text string) string {
+	scanner := bufio.NewScanner(strings.NewReader(text))
+	var builder strings.Builder
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			builder.WriteString(line)
+			builder.WriteByte(' ')
+		}
+	}
+	return strings.Join(strings.Fields(builder.String()), " ")
+}

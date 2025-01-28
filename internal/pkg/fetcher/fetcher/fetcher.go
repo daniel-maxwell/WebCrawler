@@ -15,6 +15,7 @@ import (
 	"time"
 	"webcrawler/internal/pkg/types"
 	"webcrawler/internal/pkg/utils"
+
 	"golang.org/x/net/html"
 )
 
@@ -103,6 +104,7 @@ func Fetch(context context.Context, shortUrl string) (types.PageData, error) {
 	if err != nil {
 		return types.PageData{}, errors.New(err.Error())
 	}
+	pd.URL = fullURL
 	pageData = pd
 
 	return pageData, nil
