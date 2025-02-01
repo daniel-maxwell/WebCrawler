@@ -82,6 +82,7 @@ func traverseAndExtractPageContent(content, baseURL string) (types.PageData, err
 	return pageData, nil
 }
 
+// Determines if the content is in English based on the HTML lang attribute
 func isEnglishContent(doc *html.Node) bool {
 	htmlNode := findHTMLNode(doc)
 	if htmlNode == nil {

@@ -27,4 +27,5 @@ Desktop.ini
 *.bak
 
 todo.txt
-
+bloomfilter.dat
+progress.txt

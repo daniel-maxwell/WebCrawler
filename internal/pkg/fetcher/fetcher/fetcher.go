@@ -51,6 +51,7 @@ const (
 	maxParseTime = 5 * time.Second
 )
 
+// Initialize the fetcher module by loading prerequisites.
 func Init() error {
 	// Load user agents
 	jsonFile, err := os.Open("internal/pkg/fetcher/fetcher/data/userAgents.json")
@@ -169,6 +170,7 @@ func extractPageData(content, baseURL string) (types.PageData, error) {
 	return traverseAndExtractPageContent(content, baseURL)
 }
 
+// Gets a random user agent from the user agents list.
 func getRandomUserAgent() string {
 	if len(userAgentData) == 0 {
 		log.Fatalf("No user agents loaded")

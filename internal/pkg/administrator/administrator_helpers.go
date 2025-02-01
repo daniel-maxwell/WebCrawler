@@ -2,6 +2,7 @@ package administrator
 
 import (
 	"math"
+    "strings"
 	"time"
     "webcrawler/internal/pkg/utils"
 )
@@ -48,6 +49,8 @@ func (admin *Administrator) sleepBasedOnQueueSize() {
     }
 }
 
+// Enqueues URLs extracted from a page, interleaving internal and external URLs
+// until a limit is reached or no more URLs are available
 func (admin *Administrator) enqueueExtractedURLs(sourceURL    string, 
                                                  internalURLs []string,
                                                  externalURLs []string) {
@@ -57,15 +60,25 @@ func (admin *Administrator) enqueueExtractedURLs(sourceURL    string,
 
     currentDomain, domainParseErr := utils.GetDomainFromURL(sourceURL)
 
+    enqueueLimit := min(20, max(1, 100 - (int(admin.getQueueUsage()) * 100))) // Enqueue based on queue usage within bounds of 1 to 20
+    visitLimit := domainLimit
+
+    if domainParseErr != nil && (strings.HasSuffix(currentDomain, ".org") || // Double the limit for .org, .edu or .ac.uk domains
+                                 strings.HasSuffix(currentDomain, ".edu") || 
+                                 strings.HasSuffix(currentDomain, ".ac.uk")) {                   
+        enqueueLimit = enqueueLimit * 2 
+        visitLimit   = domainLimit  * 2
+    }
+
     doEnqueueInternalURLs := domainParseErr == nil
 
-    for totalLinksEnqueued < 10 {
+    for totalLinksEnqueued < enqueueLimit {
 
         if internalIdx >= len(internalURLs) && externalIdx >= len(externalURLs) {
             break
         }
 
-        if doEnqueueInternalURLs && admin.getDomainVisitCount(currentDomain) < domainLimit {
+        if doEnqueueInternalURLs && admin.getDomainVisitCount(currentDomain) < visitLimit {
 
             for internalIdx < len(internalURLs) &&
                 admin.bloomFilter.IsVisited(internalURLs[internalIdx]) {
@@ -92,7 +105,7 @@ func (admin *Administrator) enqueueExtractedURLs(sourceURL    string,
 
         if externalIdx < len(externalURLs) {
             domain, err := utils.GetDomainFromURL(externalURLs[externalIdx])
-            if err == nil && admin.getDomainVisitCount(domain) < domainLimit {
+            if err == nil && admin.getDomainVisitCount(domain) < visitLimit {
                 err := admin.urlQueue.Insert(externalURLs[externalIdx])
                 if err == nil {
                     admin.incrementDomainVisitCount(domain)

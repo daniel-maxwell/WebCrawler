@@ -21,27 +21,28 @@ import (
 // TODO: Investigate the following constants to optimize for production
 const (
 	numReaderWorkers  = 3
-	numFetcherWorkers = 10
-	queueCapacity     = 100000
-	domainLimit       = 100
-	maxSleepMs        = 5000
+	numQueueConsumers = 15
+	queueCapacity     = 10000
+	domainLimit       = 100 // Note: Limit is doubled for .org and .edu domains
+	maxSleepMs        = 100000
 )
 
 type Administrator struct {
-	context         context.Context
-	cancel          context.CancelFunc
-	waitGroup       sync.WaitGroup
-	urlChan         chan string
-	lineNumber      int
-	progressFile    string
-	progressMutex   sync.Mutex
-	bloomFilter     *bloomfilter.BloomFilterManager
-	urlQueue        *queue.Queue
-	fetcherPool     *workerPool.WorkerPool
-	domainVisits    map[string]int
-	domainMutex     sync.Mutex
+	context       context.Context
+	cancel        context.CancelFunc
+	waitGroup     sync.WaitGroup
+	urlChan       chan string
+	lineNumber    int
+	progressFile  string
+	progressMutex sync.Mutex
+	bloomFilter   *bloomfilter.BloomFilterManager
+	urlQueue      *queue.Queue
+	fetcherPool   *workerPool.WorkerPool
+	domainVisits  map[string]int
+	domainMutex   sync.Mutex
 }
 
+// Creates a new Administrator instance
 func NewAdministrator(progressFilePath string) *Administrator {
 	context, cancel := context.WithCancel(context.Background())
 
@@ -79,6 +80,7 @@ func NewAdministrator(progressFilePath string) *Administrator {
 	}
 }
 
+// Starts the administrator and workers
 func (admin *Administrator) Run() {
 	fmt.Println("Administrator Run Called")
 
@@ -89,7 +91,7 @@ func (admin *Administrator) Run() {
 	}
 
 	// Instead of old fetcher goroutines, spawn N “queue consumer” goroutines:
-	for i := 0; i < 5; i++ { // e.g. 5 concurrency for reading from queue
+	for i := 0; i < numQueueConsumers; i++ { // concurrency for reading from queue
 		admin.waitGroup.Add(1)
 		go admin.queueConsumer(i)
 	}
@@ -98,7 +100,7 @@ func (admin *Administrator) Run() {
 	for {
 		select {
 		case <-admin.context.Done():
-			close(admin.urlChan) // No more URLs read from file
+			close(admin.urlChan) // No more URLs to read from file
 			admin.waitGroup.Wait()
 			return
 		default:
@@ -136,6 +138,7 @@ func (admin *Administrator) Run() {
 	}
 }
 
+// Reads URLs from the file and sends them to the URL channel
 func (admin *Administrator) readerWorker(id int) {
 	defer admin.waitGroup.Done()
 	for {
@@ -180,43 +183,54 @@ func (admin *Administrator) readerWorker(id int) {
 
 // Pulls URLs from admin.urlQueue, then calls the process worker
 func (admin *Administrator) queueConsumer(id int) {
-    defer admin.waitGroup.Done()
+	defer admin.waitGroup.Done()
 
-    for {
-        select {
-        case <-admin.context.Done():
-            return
-        default:
-        }
-
-        url, err := admin.urlQueue.Remove()
-        if err != nil { // queue empty, wait a bit
-            time.Sleep(500 * time.Millisecond)
-            continue
-        }
-
-        if admin.bloomFilter.IsVisited(url) {
-            continue
-        } else {
-			admin.bloomFilter.MarkVisited(url)
+	for {
+		select {
+		case <-admin.context.Done():
+			return
+		default:
 		}
 
-        // Now call the worker pool
-        context, cancel := context.WithTimeout(admin.context, 30 * time.Second)
-        response, err := admin.fetcherPool.FetchURL(context, url)
-        cancel()
-        if err != nil {
-            log.Printf("[queueConsumer %d] error in call to fetchURL %s: %v\n", id, url, err)
-            continue
-        } else {
+		url, err := admin.urlQueue.Remove()
+		if err != nil { // queue empty, wait a bit
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		if admin.bloomFilter.IsVisited(url) {
+			continue
+		} else {
+			if domain, err := utils.GetDomainFromURL(url); err == nil {
+				if fullUrl, err := utils.BuildFullUrl(url); err == nil {
+					if domain != fullUrl {
+						admin.bloomFilter.MarkVisited(url)
+					}
+				} else {
+					admin.bloomFilter.MarkVisited(url)
+				}
+			} else {
+				admin.bloomFilter.MarkVisited(url)
+			}
+		}
+
+		// Now call the worker pool
+		context, cancel := context.WithTimeout(admin.context, 30 * time.Second)
+		response, err := admin.fetcherPool.FetchURL(context, url)
+		cancel()
+		if err != nil {
+			log.Printf("[queueConsumer %d] error in call to fetchURL %s: %v\n", id, url, err)
+			continue
+		} else {
 			if response.FetchError == "" {
-				fmt.Printf("queueConsumer Worker %d fetched URL: [%s] | Title: [%s] | Lang [%s] \n", id, response.PageData.URL, response.PageData.Title, response.PageData.Language)
+				fmt.Printf("queueConsumer Worker %d fetched URL: [%s] | Title: [%s] \n", id, response.PageData.URL, response.PageData.Title)
 				admin.enqueueExtractedURLs(url, response.PageData.InternalLinks, response.PageData.ExternalLinks)
 			}
 		}
-    }
+	}
 }
 
+// Saves the current line number to the progress file
 func (admin *Administrator) saveProgress() {
 	admin.progressMutex.Lock()
 	defer admin.progressMutex.Unlock()
@@ -227,6 +241,7 @@ func (admin *Administrator) saveProgress() {
 	}
 }
 
+// Loads the current line number from the progress file
 func (admin *Administrator) loadProgress() int {
 	data, err := os.ReadFile(admin.progressFile)
 	if err != nil {
@@ -239,6 +254,7 @@ func (admin *Administrator) loadProgress() int {
 	return lineNum
 }
 
+// Skips lines until reaching the last saved line number
 func (admin *Administrator) updateProgress(scanner *bufio.Scanner) error {
 	currentLine := 0
 	for currentLine < admin.lineNumber {
@@ -253,6 +269,7 @@ func (admin *Administrator) updateProgress(scanner *bufio.Scanner) error {
 	return nil
 }
 
+// Shuts down the administrator
 func (admin *Administrator) ShutDown() {
 	fmt.Printf("Shutting down administrator. Current Crawler Status: {\nQueue Usage: %v\n, Domain Visits: %v\n, Line Number: %v\n, Bloom Filter: %v\n}\n\n\n", admin.getQueueUsage(), admin.domainVisits, admin.lineNumber, admin.bloomFilter)
 	fmt.Printf("Shutting down administrator...\n")
