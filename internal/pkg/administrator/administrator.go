@@ -150,7 +150,7 @@ func (admin *Administrator) readerWorker(id int) {
 			if !ok {
 				return // channel closed
 			}
-			if admin.bloomFilter.CheckAndMark(url) {
+			if admin.bloomFilter.IsVisited(url) {
 				continue // URL already visited
 			}
 			retryTime := 1.3
@@ -204,13 +204,13 @@ func (admin *Administrator) queueConsumer(id int) {
 			if domain, err := utils.GetDomainFromURL(url); err == nil {
 				if fullUrl, err := utils.BuildFullUrl(url); err == nil {
 					if domain != fullUrl {
-						admin.bloomFilter.CheckAndMark(url)
+						admin.bloomFilter.MarkVisited(url)
 					}
 				} else {
-					admin.bloomFilter.CheckAndMark(url)
+					admin.bloomFilter.MarkVisited(url)
 				}
 			} else {
-				admin.bloomFilter.CheckAndMark(url)
+				admin.bloomFilter.MarkVisited(url)
 			}
 		}
 
@@ -273,10 +273,10 @@ func (admin *Administrator) updateProgress(scanner *bufio.Scanner) error {
 func (admin *Administrator) ShutDown() {
 	fmt.Printf("Shutting down administrator. Current Crawler Status: {\nQueue Usage: %v\n, Domain Visits: %v\n, Line Number: %v\n, Bloom Filter: %v\n}\n\n\n", admin.getQueueUsage(), admin.domainVisits, admin.lineNumber, admin.bloomFilter)
 	fmt.Printf("Shutting down administrator...\n")
+	admin.cancel()
+	admin.waitGroup.Wait()
 	if admin.fetcherPool != nil {
 		admin.fetcherPool.Shutdown()
 	}
-	fmt.Println("\n\n\nShutting down administrator")
-	admin.cancel()
-	admin.waitGroup.Wait()
+	fmt.Println("\n\n\nShutdown complete.")
 }

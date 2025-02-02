@@ -82,8 +82,7 @@ func (admin *Administrator) enqueueExtractedURLs(sourceURL    string,
 
         if doEnqueueInternalURLs && admin.getDomainVisitCount(currentDomain) < visitLimit {
 
-            for internalIdx < len(internalURLs) &&
-                admin.bloomFilter.CheckAndMark(internalURLs[internalIdx]) {
+            for internalIdx < len(internalURLs) && admin.bloomFilter.IsVisited(internalURLs[internalIdx]) {
                 internalIdx++
             }
 
@@ -100,8 +99,7 @@ func (admin *Administrator) enqueueExtractedURLs(sourceURL    string,
             internalIdx = len(internalURLs)
         }
 
-        for externalIdx < len(externalURLs) &&
-            admin.bloomFilter.CheckAndMark(externalURLs[externalIdx]) {
+        for externalIdx < len(externalURLs) && admin.bloomFilter.IsVisited(externalURLs[externalIdx]) {
             externalIdx++
         }
 
