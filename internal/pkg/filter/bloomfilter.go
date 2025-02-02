@@ -63,7 +63,7 @@ func loadBloomFilter(path string) (*bloom.BloomFilter, error) {
 }
 
 // Save persists the Bloom filter to disk.
-func (filterManager *BloomFilterManager) Save() error {
+func (filterManager *BloomFilterManager) save() error {
     filterManager.mutex.Lock()
     defer filterManager.mutex.Unlock()
 
@@ -83,27 +83,34 @@ func (filterManager *BloomFilterManager) Save() error {
 
 // Checks if a URL has been visited.
 func (filterManager *BloomFilterManager) IsVisited(url string) bool {
-	filterManager.mutex.Lock()
-	defer filterManager.mutex.Unlock()
-	return filterManager.filter.Test([]byte(url))
+    filterManager.mutex.Lock()
+    defer filterManager.mutex.Unlock()
+    return filterManager.filter.TestString(url)
 }
 
-// Marks a URL as visited and triggers periodic saving.
-func (filterManager *BloomFilterManager) MarkVisited(url string) {
+// Checks if a URL has been visited and marks it as visited.
+func (filterManager *BloomFilterManager) CheckAndMark(url string) bool {
     filterManager.mutex.Lock()
-    filterManager.filter.Add([]byte(url))
-    filterManager.saveCounter++
-
-    // Only save if we've hit the threshold, but do so *after* unlocking
-    shouldSave := (filterManager.saveCounter >= filterManager.saveEvery)
-    if shouldSave { // Reset before unlock, so we don't double-save
-        filterManager.saveCounter = 0
+    defer filterManager.mutex.Unlock()
+    
+    if filterManager.filter.TestString(url) {
+        return true
     }
-    filterManager.mutex.Unlock()
+    
+    filterManager.filter.AddString(url)
+    filterManager.saveCounter++
+    
+    if filterManager.saveCounter >= filterManager.saveEvery {
+        filterManager.saveCounter = 0
+        go filterManager.asyncSave()
+    }
+    
+    return false
+}
 
-    if shouldSave {
-        if err := filterManager.Save(); err != nil {
-            log.Printf("Error saving Bloom filter: %v", err)
-        }
+// Saves the Bloom filter to disk asynchronously.
+func (filterManager *BloomFilterManager) asyncSave() {
+    if err := filterManager.save(); err != nil {
+        log.Printf("Error saving Bloom filter: %v", err)
     }
 }

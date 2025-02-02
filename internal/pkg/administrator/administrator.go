@@ -150,7 +150,7 @@ func (admin *Administrator) readerWorker(id int) {
 			if !ok {
 				return // channel closed
 			}
-			if admin.bloomFilter.IsVisited(url) {
+			if admin.bloomFilter.CheckAndMark(url) {
 				continue // URL already visited
 			}
 			retryTime := 1.3
@@ -204,13 +204,13 @@ func (admin *Administrator) queueConsumer(id int) {
 			if domain, err := utils.GetDomainFromURL(url); err == nil {
 				if fullUrl, err := utils.BuildFullUrl(url); err == nil {
 					if domain != fullUrl {
-						admin.bloomFilter.MarkVisited(url)
+						admin.bloomFilter.CheckAndMark(url)
 					}
 				} else {
-					admin.bloomFilter.MarkVisited(url)
+					admin.bloomFilter.CheckAndMark(url)
 				}
 			} else {
-				admin.bloomFilter.MarkVisited(url)
+				admin.bloomFilter.CheckAndMark(url)
 			}
 		}
 

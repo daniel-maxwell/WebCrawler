@@ -59,11 +59,13 @@ func (admin *Administrator) enqueueExtractedURLs(sourceURL    string,
     totalLinksEnqueued, internalIdx, externalIdx := 0, 0, 0
 
     currentDomain, domainParseErr := utils.GetDomainFromURL(sourceURL)
-
-    enqueueLimit := min(20, max(1, 100 - (int(admin.getQueueUsage()) * 100))) // Enqueue based on queue usage within bounds of 1 to 20
+    
+    // Enqueue based on queue usage within bounds of 1 to 20
+    enqueueLimit := min(20, max(1, 100 - (int(admin.getQueueUsage()) * 100)))
     visitLimit := domainLimit
-
-    if domainParseErr != nil && (strings.HasSuffix(currentDomain, ".org") || // Double the limit for .org, .edu or .ac.uk domains
+    
+    // Double the limit for .org, .edu or .ac.uk domains
+    if domainParseErr == nil && (strings.HasSuffix(currentDomain, ".org") || 
                                  strings.HasSuffix(currentDomain, ".edu") || 
                                  strings.HasSuffix(currentDomain, ".ac.uk")) {                   
         enqueueLimit = enqueueLimit * 2 
@@ -81,7 +83,7 @@ func (admin *Administrator) enqueueExtractedURLs(sourceURL    string,
         if doEnqueueInternalURLs && admin.getDomainVisitCount(currentDomain) < visitLimit {
 
             for internalIdx < len(internalURLs) &&
-                admin.bloomFilter.IsVisited(internalURLs[internalIdx]) {
+                admin.bloomFilter.CheckAndMark(internalURLs[internalIdx]) {
                 internalIdx++
             }
 
@@ -99,7 +101,7 @@ func (admin *Administrator) enqueueExtractedURLs(sourceURL    string,
         }
 
         for externalIdx < len(externalURLs) &&
-            admin.bloomFilter.IsVisited(externalURLs[externalIdx]) {
+            admin.bloomFilter.CheckAndMark(externalURLs[externalIdx]) {
             externalIdx++
         }
 
