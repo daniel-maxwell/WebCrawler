@@ -4,6 +4,17 @@ import (
 	"testing"
 )
 
+func TestGetDomainFromURL(t *testing.T) {
+    inputURL := "https://example.com/test"
+    domain, err := GetDomainFromURL(inputURL)
+    if err != nil {
+        t.Fatalf("getDomainFromURL returned error: %v", err)
+    }
+    if domain != "example.com" {
+        t.Errorf("Expected domain 'example.com', got '%s'", domain)
+    }
+}
+
 func TestBuildFullUrl(t *testing.T) {
     shortUrl := "example.com/test"
     fullUrl, err := BuildFullUrl(shortUrl)

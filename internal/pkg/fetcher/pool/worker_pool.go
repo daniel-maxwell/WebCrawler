@@ -128,6 +128,12 @@ func (workerPool *WorkerPool) Shutdown() {
 
     // Wait for any in-flight requests to finish
     workerPool.waitGroup.Wait()
+
+    // Close the worker channel
+    close(workerPool.workerChannel)
+
+    // Clear the worker list
+    workerPool.workers = []*Worker{}
 }
 
 // ### WORKER MANAGEMENT INTERNALS ###

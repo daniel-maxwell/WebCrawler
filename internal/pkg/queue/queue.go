@@ -1,7 +1,5 @@
 package queue 
 
-// https://dev.to/hvydya/how-to-build-a-thread-safe-queue-in-go-lbh
-
 import (
     "errors"
     "sync"

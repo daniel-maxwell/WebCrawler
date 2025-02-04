@@ -1,12 +1,13 @@
 package fetcher
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
 	"sync"
-    "context"
 	"time"
+
 	"github.com/temoto/robotstxt"
 )
 
@@ -36,43 +37,44 @@ func waitForPermission(context context.Context, targetURL string) error {
 
     // Retrieve or initialize RobotsData
     robotsCacheMutex.Lock()
-    rData, exists := robotsCache[domain]
+    robotsData, exists := robotsCache[domain]
     if !exists {
-        rData = &RobotsData{}
-        robotsCache[domain] = rData
+        robotsData = &RobotsData{}
+        robotsCache[domain] = robotsData
     }
-    rData.crawlDelay = min(rData.crawlDelay, 5 * time.Second) // Cap crawl delay at 5 seconds
+
+    robotsData.crawlDelay = min(robotsData.crawlDelay, 5 * time.Second) // Cap crawl delay at 5 seconds
     robotsCacheMutex.Unlock()
 
-    rData.mutex.Lock()
-    defer rData.mutex.Unlock()
+    robotsData.mutex.Lock()
+    defer robotsData.mutex.Unlock()
 
     // Refresh robots.txt if needed
-    if time.Since(rData.robotsFetched) > 24 * time.Hour || rData.group == nil {
-        err := fetchRobotsData(context, parsedURL, rData)
+    if time.Since(robotsData.robotsFetched) > 24 * time.Hour || robotsData.group == nil {
+        err := fetchRobotsData(context, parsedURL, robotsData)
         if err != nil {
             return err
         }
     }
 
     // Check if crawling is permitted
-    if rData.group != nil && !rData.group.Test(parsedURL.Path) {
+    if robotsData.group != nil && !robotsData.group.Test(parsedURL.Path) {
         return ErrCrawlingDisallowed
     }
 
     // Enforce crawl delay
     now := time.Now()
-    elapsed := now.Sub(rData.lastAccess)
-    waitTime := rData.crawlDelay - elapsed
+    elapsed := now.Sub(robotsData.lastAccess)
+    waitTime := robotsData.crawlDelay - elapsed
     if waitTime > 0 {
-        if waitTime > rData.crawlDelay {
+        if waitTime > robotsData.crawlDelay {
             // In case of clock adjustments or anomalies
-            waitTime = rData.crawlDelay
+            waitTime = robotsData.crawlDelay
         }
         sleepFunc(waitTime)
-        rData.lastAccess = rData.lastAccess.Add(rData.crawlDelay)
+        robotsData.lastAccess = robotsData.lastAccess.Add(robotsData.crawlDelay)
     } else {
-        rData.lastAccess = now
+        robotsData.lastAccess = now
     }
 
     return nil
@@ -80,7 +82,7 @@ func waitForPermission(context context.Context, targetURL string) error {
 
 // Fetches and parses the robots.txt file for the domain.
 // It updates the RobotsData with the parsed information.
-func fetchRobotsData(context context.Context, parsedURL *url.URL, rData *RobotsData) error {
+func fetchRobotsData(context context.Context, parsedURL *url.URL, robotsData *RobotsData) error {
     robotsURL := parsedURL.Scheme + "://" + parsedURL.Host + "/robots.txt"
 
     req, err := http.NewRequestWithContext(context, "GET", robotsURL, nil)
@@ -92,9 +94,9 @@ func fetchRobotsData(context context.Context, parsedURL *url.URL, rData *RobotsD
     resp, err := httpClient.Do(req)
     if err != nil {
         // Assume allow all (but set group to nil to indicate that no robots.txt was found)
-        rData.group = nil
-        rData.crawlDelay = 0
-        rData.robotsFetched = time.Now()
+        robotsData.group = nil
+        robotsData.crawlDelay = 0
+        robotsData.robotsFetched = time.Now()
         return nil
     }
     defer resp.Body.Close()
@@ -102,9 +104,9 @@ func fetchRobotsData(context context.Context, parsedURL *url.URL, rData *RobotsD
     robots, err := robotstxt.FromResponse(resp)
     if err != nil {
         // Assume allow all
-        rData.group = nil
-        rData.crawlDelay = 0
-        rData.robotsFetched = time.Now()
+        robotsData.group = nil
+        robotsData.crawlDelay = 0
+        robotsData.robotsFetched = time.Now()
         return nil
     }
 
@@ -114,11 +116,11 @@ func fetchRobotsData(context context.Context, parsedURL *url.URL, rData *RobotsD
     }
     var crawlDelay time.Duration
     if group != nil && group.CrawlDelay >= 0 {
-        crawlDelay = time.Duration(group.CrawlDelay * time.Second)
+        crawlDelay = group.CrawlDelay
     }
-    rData.group = group
-    rData.crawlDelay = crawlDelay
-    rData.robotsFetched = time.Now()
+    robotsData.group = group
+    robotsData.crawlDelay = crawlDelay
+    robotsData.robotsFetched = time.Now()
 
     return nil
 }

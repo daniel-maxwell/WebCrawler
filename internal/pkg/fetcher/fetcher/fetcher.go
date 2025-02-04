@@ -11,11 +11,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 	"webcrawler/internal/pkg/types"
 	"webcrawler/internal/pkg/utils"
-
 	"golang.org/x/net/html"
 )
 
@@ -53,8 +54,17 @@ const (
 
 // Initialize the fetcher module by loading prerequisites.
 func Init() error {
+
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		return fmt.Errorf("failed to get this file's path at runtime")
+	}
+
+	projectRoot := filepath.Dir(filename)
+	userAgentsPath := filepath.Join(projectRoot, "data", "userAgents.json")
+	
 	// Load user agents
-	jsonFile, err := os.Open("internal/pkg/fetcher/fetcher/data/userAgents.json")
+	jsonFile, err := os.Open(userAgentsPath)
 	if err != nil {
 		return fmt.Errorf("failed to read user agents file: %v", err)
 	}

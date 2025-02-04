@@ -215,7 +215,7 @@ func (admin *Administrator) queueConsumer(id int) {
 		}
 
 		// Now call the worker pool
-		context, cancel := context.WithTimeout(admin.context, 30 * time.Second)
+		context, cancel := context.WithTimeout(admin.context, 30*time.Second)
 		response, err := admin.fetcherPool.FetchURL(context, url)
 		cancel()
 		if err != nil {

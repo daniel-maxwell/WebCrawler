@@ -135,6 +135,7 @@ func handleTextNode(node *html.Node, buffer *bytes.Buffer) {
 	}
 
 	buffer.WriteString(node.Data)
+	buffer.WriteByte(' ')
 }
 
 // Handles element nodes by delegating to specific handlers
@@ -313,8 +314,8 @@ func extractNodeText(node *html.Node) string {
 	stack = append(stack, node)
 	
 	for len(stack) > 0 {
-		current := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
+		current := stack[len(stack) - 1]
+		stack = stack[:len(stack) - 1]
 		
 		if current.Type == html.TextNode {
 			builder.WriteString(current.Data)
