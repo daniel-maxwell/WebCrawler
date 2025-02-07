@@ -38,7 +38,6 @@ func main() {
         }
 
         start := time.Now()
-
         ctx, cancel := context.WithTimeout(context.Background(), 30 * time.Second)
         pageData, err := fetcher.Fetch(ctx, request.URL)
         cancel()

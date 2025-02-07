@@ -54,7 +54,6 @@ const (
 
 // Initialize the fetcher module by loading prerequisites.
 func Init() error {
-
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		return fmt.Errorf("failed to get this file's path at runtime")

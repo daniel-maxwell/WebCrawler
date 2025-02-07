@@ -46,9 +46,7 @@ type WorkerResponse struct {
     FetchTime  time.Duration
 }
 
-const (
-    FETCHER_MAIN_PATH = "internal/pkg/fetcher/cmd/app/fetcher_main.go"
-)
+const FETCHER_MAIN_PATH = "internal/pkg/fetcher/cmd/app/fetcher_main.go"
 
 // Spawns `size` worker processes.
 func NewWorkerPool(size int) (*WorkerPool, error) {
@@ -57,7 +55,6 @@ func NewWorkerPool(size int) (*WorkerPool, error) {
         workerChannel:   make(chan *Worker, size),
         shutdownChannel: make(chan struct{}),
     }
-
     for i := 0; i < size; i++ {
         worker, err := startWorker(i)
         if err != nil {
@@ -75,9 +72,9 @@ func (workerPool *WorkerPool) FetchURL(context context.Context, url string) (Wor
 
     // Don’t accept new requests if shutting down
     select {
-    case <-workerPool.shutdownChannel:
-        return response, fmt.Errorf("worker pool is shutting down")
-    default:
+        case <-workerPool.shutdownChannel:
+            return response, fmt.Errorf("worker pool is shutting down")
+        default:
     }
 
     // Grab a worker
@@ -141,7 +138,6 @@ func (workerPool *WorkerPool) Shutdown() {
 // Starts a new worker process
 func startWorker(id int) (*Worker, error) {
     cmd := exec.Command("go", "run", FETCHER_MAIN_PATH)
-    // or a prebuilt binary: exec.Command("./worker_binary")
 
     stdoutPipe, err := cmd.StdoutPipe()
     if err != nil { return nil, err }
@@ -183,7 +179,6 @@ func killWorker(worker *Worker) {
 func sendRequest(context context.Context, worker *Worker, request WorkerRequest) (WorkerResponse, error) {
     var response WorkerResponse
 
-
     worker.mutex.Lock()
     if err := worker.gobEncoder.Encode(request); err != nil {
         return response, fmt.Errorf("failed to encode request gob: %w", err)
@@ -198,15 +193,14 @@ func sendRequest(context context.Context, worker *Worker, request WorkerRequest)
         doneChannel <- err
     }()
 
-    // 3) Wait for decode or timeout
     select {
-    case <-context.Done():
-        return response, fmt.Errorf("request timed out: %w", context.Err())
-    case err := <-doneChannel:
-        if err != nil {
-            return response, fmt.Errorf("gob decode error: %w", err)
-        }
-        return response, nil
+        case <-context.Done():
+            return response, fmt.Errorf("request timed out: %w", context.Err())
+        case err := <-doneChannel:
+            if err != nil {
+                return response, fmt.Errorf("gob decode error: %w", err)
+            }
+            return response, nil
     }
 }
 

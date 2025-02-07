@@ -2,7 +2,7 @@ package types
 
 import "time"
 
-// Data structure to store and organize relevant information from the page
+// Data structure to organize and store relevant information from the page
 type PageData struct {
     URL             string              `json:"url"`
     CanonicalURL    string              `json:"canonical_url"`

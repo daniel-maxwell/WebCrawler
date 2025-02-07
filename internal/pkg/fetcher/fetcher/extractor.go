@@ -88,7 +88,6 @@ func isEnglishContent(doc *html.Node) bool {
 	if htmlNode == nil {
 		return true
 	}
-
 	for _, attr := range htmlNode.Attr {
 		if strings.EqualFold(attr.Key, "lang") {
 			lang := strings.ToLower(strings.SplitN(attr.Val, "-", 2)[0])

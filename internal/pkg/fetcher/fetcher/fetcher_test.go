@@ -99,7 +99,6 @@ func TestParseHTMLWithTimeoutTimeout(t *testing.T) {
 	}
 }
 
-
 // Extracting page data from a very simple HTML document.
 func TestExtractPageData(t *testing.T) {
 	htmlContent := `<html lang="en"><head><title>Test Page</title></head><body><p>Hello</p></body></html>`

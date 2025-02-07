@@ -24,6 +24,5 @@ func main() {
 		// Call ShutDown on the administrator
 		administrator.ShutDown()
 	}()
-
 	administrator.Run() // Careful! This will run indefinitely.
 }
