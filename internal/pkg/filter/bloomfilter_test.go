@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Tests loading an existing filter DAT file from disk.
 func TestNewBloomFilterManager_LoadExisting(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "filter.dat")
@@ -23,6 +24,7 @@ func TestNewBloomFilterManager_LoadExisting(t *testing.T) {
 	assert.True(t, newManager.IsVisited("test-url"))
 }
 
+// Tests creating a new filter file when one doesn't already exist.
 func TestNewBloomFilterManager_NewFilterWhenNoFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "nonexistent.dat")
@@ -32,6 +34,7 @@ func TestNewBloomFilterManager_NewFilterWhenNoFile(t *testing.T) {
 	assert.False(t, manager.IsVisited("test-url"))
 }
 
+// Trying to opening a filter file at an invalid path throws an error.
 func TestNewBloomFilterManager_ErrorOpeningFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "dummy")
@@ -43,6 +46,7 @@ func TestNewBloomFilterManager_ErrorOpeningFile(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// Calling isVisited on a brand new filter should return false.
 func TestIsVisited_ReturnsFalseForNewFilter(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "filter.dat")
@@ -52,6 +56,7 @@ func TestIsVisited_ReturnsFalseForNewFilter(t *testing.T) {
 	assert.False(t, manager.IsVisited("new-url"))
 }
 
+// Make sure we're able to add URLs to the filter!
 func TestMarkVisited_AddsURLToFilter(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "filter.dat")
@@ -64,6 +69,7 @@ func TestMarkVisited_AddsURLToFilter(t *testing.T) {
 	assert.True(t, manager.IsVisited(url))
 }
 
+// Make sure we're saving filter updates to disk.
 func TestMarkVisited_SavesAfterThreshold(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "filter.dat")
@@ -80,6 +86,7 @@ func TestMarkVisited_SavesAfterThreshold(t *testing.T) {
 	assert.True(t, newManager.IsVisited("url2"))
 }
 
+// Make sure the filter is thread safe
 func TestConcurrentAccess(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "filter.dat")
@@ -104,6 +111,7 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 }
 
+// Trying to load a corrupted bloom filter file should throw an error.
 func TestLoadBloomFilter_InvalidFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "invalid.dat")
@@ -113,6 +121,7 @@ func TestLoadBloomFilter_InvalidFile(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// Check a file is actually created after we called save for the first time
 func TestSave_FileIsCreated(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "filter.dat")
@@ -129,6 +138,7 @@ func TestSave_FileIsCreated(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// Marking URL as visited doesn't create a file if the target directory doesn't exist.
 func TestSave_NonexistentDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "nonexistent", "filter.dat")
