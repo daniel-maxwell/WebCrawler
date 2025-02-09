@@ -21,6 +21,9 @@ type Response struct {
     FetchTime  time.Duration
 }
 
+// Entry point for the fetcher worker.
+// Handles requests from the master, fetches the requested URL, and sends the response back.
+// All communication via gob encoding/decoding.
 func main() {
     if err := fetcher.Init(); err != nil {
         log.Fatalf("Failed to init fetcher: %v", err)
