@@ -3,6 +3,7 @@ package administrator
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+
 	//"encoding/json"
 	"webcrawler/internal/pkg/fetcher/fetcher"
 	workerPool "webcrawler/internal/pkg/fetcher/pool"
@@ -223,6 +225,11 @@ func (admin *Administrator) queueConsumer(id int) {
 		} else {
 			if response.FetchError == "" {
 				fmt.Printf("queueConsumer Worker %d fetched URL: [%s] | Title: [%s] \n", id, response.PageData.URL, response.PageData.Title)
+				jsonData, err := json.Marshal(response.PageData)
+				if err != nil {
+					log.Printf("Error marshalling page data: %v", err)
+				}
+				fmt.Printf("Page Data: %s\n", jsonData)
 				admin.enqueueExtractedURLs(url, response.PageData.InternalLinks, response.PageData.ExternalLinks)
 			}
 		}
