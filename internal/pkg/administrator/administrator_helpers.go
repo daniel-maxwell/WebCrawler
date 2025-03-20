@@ -60,8 +60,8 @@ func (admin *Administrator) enqueueExtractedURLs(sourceURL    string,
 
     currentDomain, domainParseErr := utils.GetDomainFromURL(sourceURL)
     
-    // Enqueue based on queue usage within bounds of 1 to 20
-    enqueueLimit := min(20, max(1, 100 - (int(admin.getQueueUsage()) * 100)))
+    // Enqueue based on queue usage within bounds of 2 to 20
+    enqueueLimit := min(20, max(2, 100 - (int(admin.getQueueUsage()) * 100)))
     visitLimit := domainLimit
     
     // Double the limit for .org, .edu or .ac.uk domains
@@ -74,6 +74,7 @@ func (admin *Administrator) enqueueExtractedURLs(sourceURL    string,
 
     doEnqueueInternalURLs := domainParseErr == nil
 
+    // Enqueue URLs in a round-robin fashion until the limit is reached
     for totalLinksEnqueued < enqueueLimit {
 
         if internalIdx >= len(internalURLs) && externalIdx >= len(externalURLs) {

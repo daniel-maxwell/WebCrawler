@@ -223,8 +223,6 @@ func parseMetaTags(node *html.Node, pageData *types.PageData) {
 			pageData.OpenGraph[property] = content
 		case name == "description":
 			pageData.MetaDescription = content
-		case name == "robots":
-			pageData.RobotsMeta = content
 	}
 
 	parseTimestamps(property, content, pageData)
