@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
 	"webcrawler/internal/pkg/types"
 	"webcrawler/internal/pkg/utils"
 	"golang.org/x/net/html"
@@ -23,6 +24,12 @@ import (
 type UserAgentData struct {
 	UserAgent string `json:"userAgent"`
 }
+
+const (
+	maxBodySize  = 2 * 1024 * 1024 // 2 MB
+	maxParseTime = 5 * time.Second
+	defaultMaxRedirects = 3
+)
 
 var (
 	// Shared Chrome instance variables
@@ -44,12 +51,23 @@ var (
 			MaxIdleConns:          20,
 			MaxIdleConnsPerHost:   10,
 		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// Check for redirect loops
+			newURL := req.URL.String()
+			for _, prevReq := range via {
+				if prevReq.URL.String() == newURL {
+					return fmt.Errorf("redirect loop detected: %s", newURL)
+				}
+			}
+			
+			// Check redirect limit
+			if len(via) >= defaultMaxRedirects {
+				return fmt.Errorf("reached maximum of %d redirects", defaultMaxRedirects)
+			}
+			
+			return nil
+		},
 	}
-)
-
-const (
-	maxBodySize  = 2 * 1024 * 1024 // 2 MB
-	maxParseTime = 5 * time.Second
 )
 
 // Initialize the fetcher module by loading prerequisites.
@@ -151,6 +169,11 @@ func fetchContent(context context.Context, fullURL string) (string, error) {
 	}
 
 	content := string(bodyBytes)
+	// Validate that the content is valid UTF-8.
+	if !utf8.ValidString(content) {
+		return "", fmt.Errorf("invalid UTF-8 content for URL %s", fullURL)
+	}
+
 	return content, nil
 }
 
